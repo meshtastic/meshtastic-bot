@@ -1,0 +1,11 @@
+config:
+  - command: bug
+    template_url: https://github.com/meshtastic/web/blob/main/.github/ISSUE_TEMPLATE/bug.yml
+    channel_id:
+      - '1438919003866267761'
+    title: Bug Report
+  - command: feature
+    template_url: https://github.com/meshtastic/web/blob/main/.github/ISSUE_TEMPLATE/feature.yml
+    channel_id:
+      - '1438919003866267761'
+    title: Feature Request

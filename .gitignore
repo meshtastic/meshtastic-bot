@@ -1,0 +1,43 @@
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# IDE
+.DS_Store
+.direnv/
+.idea/
+.vscode/
+
+# Environment variables & secrets
+.env
+.env.local
+.env.prod
+.env.dev
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Temporary files
+tmp/
+coverage/
+
+# Legacy entries (if migrating from Node.js)
+*.tsbuildinfo
+node_modules/
+dist/
+build/
+docs/
+scratchpad/*
+!scratchpad/tsconfig.json
+
+# exes
+meshtastic-bot
+
+# AI
+.claude

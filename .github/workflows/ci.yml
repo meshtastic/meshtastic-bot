@@ -1,0 +1,185 @@
+name: CI/CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to Fly.io after tests pass'
+        required: false
+        type: boolean
+        default: true
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+      - name: Run go fmt check
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Go files must be formatted with gofmt. Please run:"
+            echo "  gofmt -w ."
+            exit 1
+          fi
+
+  test:
+    name: Test
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Check coverage
+        run: go tool cover -func=coverage.out
+
+  build:
+    name: Build
+    needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build
+        run: go build -v -o meshtastic-bot .
+
+      - name: Verify binary
+        run: ./meshtastic-bot --version || echo "Binary built successfully"
+
+  docker:
+    name: Docker Build
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: meshtastic-bot:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy
+    needs: [docker]
+    if: |
+      (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && inputs.deploy == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    # Deploy token setup:
+    # Create a deploy token scoped to your app:
+    #   fly tokens create deploy -a <app-name> -x 999999h
+    # Add it as FLY_API_TOKEN in GitHub repo secrets
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Extract app name from fly.toml
+        id: fly_app
+        run: |
+          APP_NAME=$(grep '^app = ' fly.toml | sed "s/app = '\(.*\)'/\1/")
+          echo "name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "Deploying to app: $APP_NAME"
+
+      - name: Validate Fly.io token
+        run: flyctl auth whoami
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Check if app exists and create if needed
+        run: |
+          if ! flyctl status --app ${{ steps.fly_app.outputs.name }} 2>/dev/null; then
+            echo "App does not exist. Creating app: ${{ steps.fly_app.outputs.name }}"
+            flyctl apps create ${{ steps.fly_app.outputs.name }}
+          else
+            echo "App ${{ steps.fly_app.outputs.name }} already exists"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Sync secrets to Fly.io
+        run: |
+          cat <<EOF | flyctl secrets import --app ${{ steps.fly_app.outputs.name }}
+          DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          DISCORD_SERVER_ID=${{ secrets.DISCORD_SERVER_ID }}
+          CONFIG_PATH=${{ secrets.CONFIG_PATH || 'config.yaml' }}
+          FAQ_PATH=${{ secrets.FAQ_PATH || 'faq.yaml' }}
+          ENV=${{ secrets.ENV || 'prod' }}
+          HEALTHCHECK_PORT=${{ secrets.HEALTHCHECK_PORT || '8080' }}
+          EOF
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --remote-only --app ${{ steps.fly_app.outputs.name }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verify deployment
+        run: flyctl status --app ${{ steps.fly_app.outputs.name }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
