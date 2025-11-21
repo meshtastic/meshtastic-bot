@@ -27,15 +27,6 @@ go.work
 tmp/
 coverage/
 
-# Legacy entries (if migrating from Node.js)
-*.tsbuildinfo
-node_modules/
-dist/
-build/
-docs/
-scratchpad/*
-!scratchpad/tsconfig.json
-
 # exes
 meshtastic-bot
 

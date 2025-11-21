@@ -14,7 +14,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -a -installsuffix cgo \
     -ldflags '-s -w -extldflags "-static"' \
-    -o meshtastic-bot .
+    -o meshtastic-bot ./cmd/meshtastic-bot
 
 FROM alpine:latest
 

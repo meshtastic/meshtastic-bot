@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	github "meshtastic-bot/github"
+	github "github.com/meshtastic/meshtastic-bot/internal/github"
 
 	"github.com/bwmarrin/discordgo"
 )

@@ -1,4 +1,4 @@
-module meshtastic-bot
+module github.com/meshtastic/meshtastic-bot
 
 go 1.25.4
 

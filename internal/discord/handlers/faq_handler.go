@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"meshtastic-bot/config"
+	"github.com/meshtastic/meshtastic-bot/internal/config"
 
 	"github.com/bwmarrin/discordgo"
 )

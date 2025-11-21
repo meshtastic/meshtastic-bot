@@ -90,7 +90,7 @@ On the "Bot" tab, scroll down to "Privileged Gateway Intents" and enable:
    cp .env.example .env.dev
    ```
 
-3. **Edit `.env` with your credentials:**
+3. **Edit `.env.dev` with your credentials:**
    ```env
    DISCORD_TOKEN=your_discord_bot_token
    GITHUB_TOKEN=your_github_personal_access_token
@@ -121,12 +121,12 @@ config:
   - command: bug
     template_url: https://github.com/meshtastic/web/blob/main/.github/ISSUE_TEMPLATE/bug.yml
     channel_id:
-      - '871553714782081024'
+      - '123456789'
     title: Bug Report
   - command: feature
     template_url: https://github.com/meshtastic/web/blob/main/.github/ISSUE_TEMPLATE/feature.yml
     channel_id:
-      - '871553714782081024'
+      - '123456789'
     title: Feature Request
 ```
 
@@ -158,9 +158,6 @@ Use the provided `run.sh` script to run with different environment files:
 # Development mode
 ./run.sh .env.dev
 
-# Production mode
-./run.sh .env.prod
-
 # With custom docker-compose flags
 ./run.sh .env.dev --build --force-recreate
 ```
@@ -172,10 +169,27 @@ Use the provided `run.sh` script to run with different environment files:
 docker build -t meshtastic-bot .
 
 # Run with specific env file
-docker run -d --env-file .env.prod -p 8080:8080 meshtastic-bot
+docker run -d --env-file .env.dev -p 8080:8080 meshtastic-bot
 ```
 
 ## Deployment
+
+### Github
+
+The GitHub Actions CI/CD pipeline requires the following repository secrets to be configured:
+
+1. **Configure Repository Secrets:**
+   - Go to your GitHub repository
+   - Navigate to Settings → Secrets and variables → Actions
+   - Add the following secrets:
+
+| Secret Name | Description | How to Get It |
+|-------------|-------------|---------------|
+| `DISCORD_TOKEN` | Discord bot token | See "Get the Bot Token" in Discord Bot Setup section |
+| `FLY_API_TOKEN` | Fly.io API token for deployment | Run `fly auth token` in your terminal |
+| `DISCORD_SERVER` | Discord server ID | See "Get Your Server ID" in Discord Bot Setup section |
+
+These secrets are required for the automated deployment workflow to function correctly.
 
 ### Deploying to Fly.io
 
@@ -199,7 +213,7 @@ This project includes automated deployment scripts for Fly.io.
 
 3. **Deploy with secrets:**
    ```bash
-   ./deploy.sh --sync-secrets
+   ./deploy.sh 
    ```
 
 #### Subsequent Deployments
@@ -207,12 +221,6 @@ This project includes automated deployment scripts for Fly.io.
 ```bash
 # Regular deployment
 ./deploy.sh
-
-# Skip confirmation prompt
-./deploy.sh -y
-
-# Update secrets only
-cat .env.prod | grep -v '^#' | grep -v '^$' | fly secrets import
 ```
 
 #### Manual Deployment
@@ -272,7 +280,6 @@ go test ./config -run TestParseTemplateURL
 
 ```bash
 # Run with coverage
-go test ./... -coverprofile=coverage.out
 go tool cover -html=coverage.out
 
 # Run with race detection
@@ -281,18 +288,6 @@ go test ./... -race
 # Run tests in parallel
 go test ./... -parallel 4
 ```
-
-### Test Coverage
-
-Current test coverage includes:
-- ✅ Configuration parsing and validation
-- ✅ FAQ data loading and searching
-- ✅ Helper functions for text processing
-- ✅ Modal field extraction
-- ✅ Template URL parsing
-
-See `TESTING.md` for detailed testing documentation.
-
 ## Project Structure
 
 ```
@@ -333,7 +328,7 @@ meshtastic-bot/
 | `DISCORD_TOKEN` | Yes | - | Discord bot token |
 | `DISCORD_SERVER_ID` | Yes | - | Target Discord server ID |
 | `GITHUB_TOKEN` | Yes | - | GitHub personal access token |
-| `CONFIG_PATH` | Yes | - | Path to config.yaml |
+| `CONFIG_PATH` | No | `config.yaml` | Path to config.yaml |
 | `FAQ_PATH` | No | `faq.yaml` | Path to FAQ YAML file |
 | `HEALTHCHECK_PORT` | No | `8080` | HTTP health check port |
 | `ENV` | No | `dev` | Environment (dev/prod) |
@@ -351,9 +346,6 @@ curl http://localhost:8080/health
 
 This endpoint is used by:
 - Docker health checks
-- Fly.io health monitoring
-- Load balancers
-- Monitoring systems
 
 ## Contributing
 
@@ -382,10 +374,6 @@ go fmt ./...
 
 # Static analysis
 go vet ./...
-
-# Optional: Install golangci-lint for advanced linting (used in CI)
-# go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-# golangci-lint run
 ```
 
 ### 4. Write Tests

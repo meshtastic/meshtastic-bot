@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"meshtastic-bot/config"
-	"meshtastic-bot/discord/handlers"
+	"github.com/meshtastic/meshtastic-bot/internal/config"
+	"github.com/meshtastic/meshtastic-bot/internal/discord/handlers"
 
 	"github.com/bwmarrin/discordgo"
 )
