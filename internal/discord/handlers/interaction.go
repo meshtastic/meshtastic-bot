@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	config "meshtastic-bot/config"
-	github "meshtastic-bot/github"
+	config "github.com/meshtastic/meshtastic-bot/internal/config"
+	github "github.com/meshtastic/meshtastic-bot/internal/github"
 
 	"github.com/bwmarrin/discordgo"
 )
