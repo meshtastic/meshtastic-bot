@@ -29,20 +29,19 @@ Before running the bot, you need to create a Discord application and configure i
 ### 2. Create a Bot User
 
 1. In your application's settings, navigate to the "Bot" tab
-2. Click "Add Bot"
-3. Customize the bot's username and icon
+2. On the username field give this bot a name of "Meshtastic Bot"
+3. Upload the Meshtastic icon as the avatar
 
 ### 3. Get the Bot Token
 
 1. On the "Bot" tab, click "Reset Token" to reveal the bot's token
 2. **Important:** Treat this token like a password. Never share it or commit it to version control
-3. Copy this token for your `.env.dev` file
+3. Copy this token for your `.env.dev`or `.env.prod` file
 
 ### 4. Enable Privileged Gateway Intents
 
 On the "Bot" tab, scroll down to "Privileged Gateway Intents" and enable:
 - **Message Content Intent** (required for reading messages)
-- **Server Members Intent** (if needed for user info)
 
 ### 5. Set Bot Permissions and Scopes
 
@@ -54,11 +53,10 @@ On the "Bot" tab, scroll down to "Privileged Gateway Intents" and enable:
    - `Send Messages`
    - `Use Slash Commands`
    - `Embed Links`
-   - `Read Message History`
 
 ### 6. Invite the Bot to Your Server
 
-1. Copy the generated URL from the URL Generator
+1. Copy the below generated URL from the URL Generator
 2. Paste it into your browser
 3. Select your server (requires "Manage Server" permission)
 4. Authorize the bot
@@ -67,7 +65,35 @@ On the "Bot" tab, scroll down to "Privileged Gateway Intents" and enable:
 
 1. Enable Developer Mode in Discord: User Settings → Advanced (has an icon with three dots) → Toggle Developer Mode
 2. Right-click your server icon → "Copy Server ID"
-3. Save this for your `.env.dev` file
+3. Save this for your `.env.dev` or `.env.prod` file
+
+## GitHub Personal Access Token Setup
+
+The bot needs a GitHub personal access token to create issues on your behalf.
+
+### 1. Create a Fine-Grained Personal Access Token
+
+1. Go to [GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens](https://github.com/settings/tokens?type=beta)
+2. Click "Generate new token"
+3. Give your token a descriptive name (e.g., "Meshtastic Discord Bot Prod")
+4. Set an expiration date (recommended: 90 days or custom)
+5. Under "Repository access", select either:
+   - **Only select repositories** (recommended): Choose the specific repositories where the bot should create issues
+   - **All repositories**: If you want the bot to have access to all your repositories
+
+### 2. Configure Permissions
+
+Under "Permissions" → "Repository permissions":
+1. Find **Issues** in the list
+2. Set the access level to **Read and write**
+3. This is the only permission required for the bot to function
+
+### 3. Generate and Save the Token
+
+1. Click "Generate token" at the bottom of the page
+2. **Important:** Copy the token immediately - you won't be able to see it again
+3. Treat this token like a password. Never share it or commit it to version control
+4. Save this token for your `.env.dev` or `.env.prod` file
 
 ## Local Development Setup
 
@@ -75,7 +101,7 @@ On the "Bot" tab, scroll down to "Privileged Gateway Intents" and enable:
 
 - Go 1.25 or higher
 - Discord bot token (see Discord Bot Setup above)
-- A fine grained Github personal access token with the `issues` scope and read&write permission.
+- A fine grained Github personal access token with the `issues` scope and read & write permission.
 
 ### Quick Start
 
@@ -107,7 +133,7 @@ On the "Bot" tab, scroll down to "Privileged Gateway Intents" and enable:
 
 5. **Run the bot:**
    ```bash
-   go run .
+   ./run.sh 
    ```
 
 ## Configuration Files
@@ -443,14 +469,14 @@ After deploying slash commands, they may take up to an hour to propagate globall
 
 1. Verify `GITHUB_TOKEN` has either access to `all public repos` or `selected repos` 
 2. Ensure `GITHUB_TOKEN` has pelmissions with read/write access to `issues`
-4. Check template URLs in `config.yaml` are valid
-4. Ensure bot has access to target repository
+4. Check template URLs in `config.yaml` are valid, verify the url by pasting it into your web browser. 
+4. Ensure bot has read/write access in the github token to target repository
 5. Check logs for specific error messages
 
 ### Docker build fails
 
 1. Ensure Go 1.25+ is specified in Dockerfile
-2. Verify all dependencies are in `go.mod`
+2. Verify all dependencies are in `go.mod`, try running `go mod tidy` to ensure all dependencies are downloaded.
 3. Check for syntax errors: `go build .`
 
 ## License
