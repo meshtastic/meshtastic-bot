@@ -258,6 +258,8 @@ software_modules:
    ./run.sh .env.prod
    ```
 
+   > The `run.sh` script uses your local Docker instance to build and run the bot, creating a new container tagged `meshtastic-bot`.
+
 The bot will start in production mode. Slash commands will register globally (may take up to 1 hour to propagate).
 
 ### Production Management
