@@ -31,10 +31,12 @@ func New(cfg *config.Config, logger *log.Logger) (*DiscordBot, error) {
 		return nil, fmt.Errorf("failed to load FAQ: %w", err)
 	}
 
-	// Initialize GitHub client
-	// TODO: Extract owner/repo from config rather than hardcoding
-	handlers.InitializeGithub(cfg.GithubToken, "meshtastic", "web")
-	logger.Printf("Initialized GitHub client")
+	owner, repo := config.GetOwnerAndRepo()
+	if owner == "" || repo == "" {
+		return nil, fmt.Errorf("failed to extract owner/repo from config template URLs")
+	}
+	handlers.InitializeGithub(cfg.GithubToken, owner, repo)
+	logger.Printf("Initialized GitHub client for %s/%s", owner, repo)
 
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {

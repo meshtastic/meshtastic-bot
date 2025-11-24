@@ -13,8 +13,6 @@ import (
 
 var (
 	githubClient *github.Client
-	githubOwner  string
-	githubRepo   string
 )
 
 // ModalState tracks the state of multi-part modals
@@ -25,6 +23,8 @@ type ModalState struct {
 	Labels          []string
 	Command         string
 	ChannelID       string
+	Owner           string
+	Repo            string
 }
 
 // Global storage for modal states (in production, consider using a proper session store)
@@ -121,7 +121,7 @@ func handleFaq(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Get all fields to check if we need multi-part modals
-	allFields, title, err := config.GetAllFieldsForModal("bug", i.ChannelID)
+	allFields, title, owner, repo, err := config.GetAllFieldsForModal("bug", i.ChannelID)
 	if err != nil {
 		log.Printf("Error getting modal fields: %v", err)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -144,6 +144,8 @@ func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Labels:          []string{"from-discord", "bug"},
 			Command:         "bug",
 			ChannelID:       i.ChannelID,
+			Owner:           owner,
+			Repo:            repo,
 		}
 	}
 
@@ -171,7 +173,7 @@ func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func handleFeature(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Get all fields to check if we need multi-part modals
-	allFields, title, err := config.GetAllFieldsForModal("feature", i.ChannelID)
+	allFields, title, owner, repo, err := config.GetAllFieldsForModal("feature", i.ChannelID)
 	if err != nil {
 		log.Printf("Error getting modal fields: %v", err)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -194,6 +196,8 @@ func handleFeature(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Labels:          []string{"from-discord", "enhancement"},
 			Command:         "feature",
 			ChannelID:       i.ChannelID,
+			Owner:           owner,
+			Repo:            repo,
 		}
 	}
 
@@ -300,7 +304,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 		// All fields collected - create the GitHub issue
 		body := buildIssueBody(state.SubmittedValues, i.Member.User.Username, i.Member.User.ID)
-		issue, err := githubClient.CreateIssue(githubOwner, githubRepo, state.Title, body, state.Labels)
+		issue, err := githubClient.CreateIssue(state.Owner, state.Repo, state.Title, body, state.Labels)
 
 		if err != nil {
 			log.Printf("Failed to create GitHub issue: %v", err)
@@ -331,6 +335,20 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Simple modal (5 or fewer fields) - old behavior
+	// Get owner and repo from modal config
+	_, _, owner, repo, err := config.GetAllFieldsForModal(command, channelID)
+	if err != nil {
+		log.Printf("Error getting modal config: %v", err)
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Failed to create issue. Configuration error.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
 	// Extract field values
 	fields := extractModalFields(data.Components)
 
@@ -360,7 +378,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	body := github.FormatIssueBody(username, userID, description)
 
-	issue, err := githubClient.CreateIssue(githubOwner, githubRepo, title, body, labels)
+	issue, err := githubClient.CreateIssue(owner, repo, title, body, labels)
 	if err != nil {
 		log.Printf("Failed to create GitHub issue: %v", err)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -458,7 +476,7 @@ func handleModalContinuation(s *discordgo.Session, i *discordgo.InteractionCreat
 
 	// All fields collected - create the GitHub issue
 	body := buildIssueBody(state.SubmittedValues, i.Member.User.Username, i.Member.User.ID)
-	issue, err := githubClient.CreateIssue(githubOwner, githubRepo, state.Title, body, state.Labels)
+	issue, err := githubClient.CreateIssue(state.Owner, state.Repo, state.Title, body, state.Labels)
 
 	if err != nil {
 		log.Printf("Failed to create GitHub issue: %v", err)

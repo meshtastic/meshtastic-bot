@@ -1,21 +1,18 @@
 package github
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
+	"log"
 
 	"github.com/google/go-github/v57/github"
 	"golang.org/x/oauth2"
 )
 
 type Client struct {
-	token      string
-	client     *github.Client
-	httpClient *http.Client
-	ctx        context.Context
+	token  string
+	client *github.Client
+	ctx    context.Context
 }
 
 type IssueRequest struct {
@@ -32,65 +29,47 @@ type IssueResponse struct {
 
 func NewClient(token string) *Client {
 	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: token},
-	)
+
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	tc := oauth2.NewClient(ctx, ts)
 
 	return &Client{
-		token:      token,
-		client:     github.NewClient(tc),
-		httpClient: tc,
-		ctx:        ctx,
+		token:  token,
+		client: github.NewClient(tc),
+		ctx:    ctx,
 	}
 }
 
-// CreateIssue creates a new issue in the specified repository
 func (c *Client) CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/meshtastic/%s/%s/issues", owner, repo)
+	log.Printf("[GitHub API] Creating issue in %s/%s", owner, repo)
+	log.Printf("[GitHub API] Title: %s", title)
+	log.Printf("[GitHub API] Labels: %v", labels)
 
-	issueReq := IssueRequest{
-		Title:  title,
-		Body:   body,
-		Labels: labels,
+	req := &github.IssueRequest{
+		Title: github.String(title),
+		Body:  github.String(body),
 	}
 
-	jsonData, err := json.Marshal(issueReq)
+	// go-github requires *string slices, so we adapt if labels exist
+	if len(labels) > 0 {
+		req.Labels = &labels
+	}
+
+	issue, resp, err := c.client.Issues.Create(c.ctx, owner, repo, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		if resp != nil {
+			return nil, fmt.Errorf("github API returned %d: %w", resp.StatusCode, err)
+		}
+		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		var errResp map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		return nil, fmt.Errorf("github API returned status %d: %v", resp.StatusCode, errResp)
-	}
-
-	var issueResp IssueResponse
-	if err := json.NewDecoder(resp.Body).Decode(&issueResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &issueResp, nil
+	return &IssueResponse{
+		Number:  issue.GetNumber(),
+		HTMLURL: issue.GetHTMLURL(),
+		ID:      issue.GetID(),
+	}, nil
 }
 
-// FormatIssueBody formats the issue body with Discord user context
 func FormatIssueBody(username, userID, description string) string {
 	return fmt.Sprintf(`**Reported by:** %s (ID: %s)
 

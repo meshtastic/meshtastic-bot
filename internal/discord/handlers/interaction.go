@@ -27,6 +27,8 @@ type ModalState struct {
 	Labels          []string
 	Command         string
 	ChannelID       string
+	Owner           string
+	Repo            string
 }
 
 var modalStates = make(map[string]*ModalState)

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"gopkg.in/yaml.v3"
@@ -62,6 +63,7 @@ type ModalConfig struct {
 	ChannelIDs     []string      `yaml:"channel_id"`
 	Title          string        `yaml:"title"`
 	Fields         []FieldConfig `yaml:"fields,omitempty"`
+	ExcludeFields  []string      `yaml:"exclude_fields,omitempty"`
 
 	// Parsed template URL (populated after loading)
 	TemplateURL *TemplateURL `yaml:"-"`
@@ -106,6 +108,23 @@ func (o *Option) UnmarshalYAML(value *yaml.Node) error {
 }
 
 var loadedModals *ModalsConfig
+
+// GetOwnerAndRepo returns the owner and repo from the first configured modal template URL
+// Returns empty strings if no template URL is configured
+func GetOwnerAndRepo() (string, string) {
+	if loadedModals == nil {
+		return "", ""
+	}
+
+	// Find the first modal with a template URL
+	for _, modal := range loadedModals.Modals {
+		if modal.TemplateURL != nil {
+			return modal.TemplateURL.Owner(), modal.TemplateURL.Repo()
+		}
+	}
+
+	return "", ""
+}
 
 // LoadModals reads and parses the modal configuration from the specified YAML file
 func LoadModals(ConfigPath string) error {
@@ -161,6 +180,17 @@ func FetchGitHubTemplate(templateURL *TemplateURL) (*GitHubIssueTemplate, error)
 	return &template, nil
 }
 
+// isFieldExcluded checks if a field ID is in the exclusion list (case-insensitive)
+func isFieldExcluded(fieldID string, excludeList []string) bool {
+	fieldIDLower := strings.ToLower(fieldID)
+	for _, excludedField := range excludeList {
+		if fieldIDLower == strings.ToLower(excludedField) {
+			return true
+		}
+	}
+	return false
+}
+
 // GetTemplateFields returns all interactive fields from a GitHub issue template
 func GetTemplateFields(template *GitHubIssueTemplate) []GitHubTemplateField {
 	fields := make([]GitHubTemplateField, 0)
@@ -207,9 +237,10 @@ func ConvertGitHubFieldToFieldConfig(field GitHubTemplateField) *FieldConfig {
 }
 
 // GetAllFieldsForModal returns all fields for a modal config (used for multi-part modals)
-func GetAllFieldsForModal(command, channelID string) ([]FieldConfig, string, error) {
+// Returns: fields, title, owner, repo, error
+func GetAllFieldsForModal(command, channelID string) ([]FieldConfig, string, string, string, error) {
 	if loadedModals == nil {
-		return nil, "", fmt.Errorf("modals not loaded")
+		return nil, "", "", "", fmt.Errorf("modals not loaded")
 	}
 
 	// Find the matching modal config
@@ -230,20 +261,33 @@ func GetAllFieldsForModal(command, channelID string) ([]FieldConfig, string, err
 	}
 
 	if modalConfig == nil {
-		return nil, "", fmt.Errorf("no modal configured for command '%s' in channel '%s'", command, channelID)
+		return nil, "", "", "", fmt.Errorf("no modal configured for command '%s' in channel '%s'", command, channelID)
 	}
 
 	var fields []FieldConfig
+	var title string
+	var owner string
+	var repo string
 
 	// If template URL is configured, fetch and convert fields
 	if modalConfig.TemplateURL != nil {
 		template, err := FetchGitHubTemplate(modalConfig.TemplateURL)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to fetch template: %w", err)
+			return nil, "", "", "", fmt.Errorf("failed to fetch template: %w", err)
 		}
+
+		// Use template name as title
+		title = template.Name
+		// Extract owner and repo from template URL
+		owner = modalConfig.TemplateURL.Owner()
+		repo = modalConfig.TemplateURL.Repo()
 
 		templateFields := GetTemplateFields(template)
 		for _, field := range templateFields {
+			// Skip excluded fields
+			if isFieldExcluded(field.ID, modalConfig.ExcludeFields) {
+				continue
+			}
 			if converted := ConvertGitHubFieldToFieldConfig(field); converted != nil {
 				fields = append(fields, *converted)
 			}
@@ -251,9 +295,13 @@ func GetAllFieldsForModal(command, channelID string) ([]FieldConfig, string, err
 	} else {
 		// Use configured fields
 		fields = modalConfig.Fields
+		title = modalConfig.Title
+		// For legacy configs without template URL, return empty owner/repo
+		owner = ""
+		repo = ""
 	}
 
-	return fields, modalConfig.Title, nil
+	return fields, title, owner, repo, nil
 }
 
 // GetModel returns the modal data for a specific command and channel
@@ -283,6 +331,7 @@ func GetModel(command, channelID string) (*discordgo.InteractionResponseData, er
 	}
 
 	var fields []FieldConfig
+	var title string
 
 	// If template URL is configured, fetch and convert fields
 	if modalConfig.TemplateURL != nil {
@@ -291,8 +340,15 @@ func GetModel(command, channelID string) (*discordgo.InteractionResponseData, er
 			return nil, fmt.Errorf("failed to fetch template: %w", err)
 		}
 
+		// Use template name as title
+		title = template.Name
+
 		templateFields := GetTemplateFields(template)
 		for _, field := range templateFields {
+			// Skip excluded fields
+			if isFieldExcluded(field.ID, modalConfig.ExcludeFields) {
+				continue
+			}
 			if converted := ConvertGitHubFieldToFieldConfig(field); converted != nil {
 				fields = append(fields, *converted)
 			}
@@ -300,6 +356,7 @@ func GetModel(command, channelID string) (*discordgo.InteractionResponseData, er
 	} else {
 		// Use configured fields
 		fields = modalConfig.Fields
+		title = modalConfig.Title
 	}
 
 	// Discord modals can only have 5 components max
@@ -339,7 +396,7 @@ func GetModel(command, channelID string) (*discordgo.InteractionResponseData, er
 
 	return &discordgo.InteractionResponseData{
 		CustomID:   fmt.Sprintf("modal_%s_%s", command, channelID),
-		Title:      modalConfig.Title,
+		Title:      title,
 		Components: components,
 	}, nil
 }

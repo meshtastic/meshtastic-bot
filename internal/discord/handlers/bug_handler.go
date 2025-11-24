@@ -11,7 +11,7 @@ import (
 
 func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Get all fields to check if we need multi-part modals
-	allFields, title, err := config.GetAllFieldsForModal("bug", i.ChannelID)
+	allFields, title, owner, repo, err := config.GetAllFieldsForModal("bug", i.ChannelID)
 	if err != nil {
 		log.Printf("Error getting modal fields: %v", err)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -34,6 +34,8 @@ func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Labels:          []string{"from-discord", "bug"},
 			Command:         "bug",
 			ChannelID:       i.ChannelID,
+			Owner:           owner,
+			Repo:            repo,
 		}
 	}
 
