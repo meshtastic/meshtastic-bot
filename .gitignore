@@ -28,7 +28,7 @@ tmp/
 coverage/
 
 # exes
-meshtastic-bot
+meshtastic-bot/meshtastic-bot
 
 # AI
 .claude
