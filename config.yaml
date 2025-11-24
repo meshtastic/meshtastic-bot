@@ -2,10 +2,20 @@ config:
   - command: bug
     template_url: https://github.com/meshtastic/web/blob/main/.github/ISSUE_TEMPLATE/bug.yml
     channel_id:
-      - '1438919003866267761'
+      - '871553714782081024'
     title: Bug Report
   - command: feature
     template_url: https://github.com/meshtastic/web/blob/main/.github/ISSUE_TEMPLATE/feature.yml
     channel_id:
-      - '1438919003866267761'
+      - '871553714782081024'
+    title: Feature Request
+   - command: bug
+    template_url: https://github.com/meshtastic/Meshtastic-Android/blob/main/.github/ISSUE_TEMPLATE/bug_report.yml
+    channel_id:
+      - '871539863307055134'
+    title: Bug Report
+  - command: feature
+    template_url: https://github.com/meshtastic/Meshtastic-Android/blob/main/.github/ISSUE_TEMPLATE/feature_request.yml
+    channel_id:
+      - '871539863307055134'
     title: Feature Request
