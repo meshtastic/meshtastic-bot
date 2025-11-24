@@ -9,7 +9,7 @@ config:
     channel_id:
       - '871553714782081024'
     title: Feature Request
-   - command: bug
+  - command: bug
     template_url: https://github.com/meshtastic/Meshtastic-Android/blob/main/.github/ISSUE_TEMPLATE/bug_report.yml
     channel_id:
       - '871539863307055134'
