@@ -5,10 +5,44 @@ import (
 	"log"
 	"strings"
 
+	"github.com/meshtastic/meshtastic-bot/internal/config"
 	github "github.com/meshtastic/meshtastic-bot/internal/github"
 
 	"github.com/bwmarrin/discordgo"
 )
+
+func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, state *ModalState, stateKey string, includeMarkdownNote bool) {
+	body := buildIssueBody(state.SubmittedValues, i.Member.User.Username, i.Member.User.ID)
+	issue, err := GithubClient.CreateIssue(state.Owner, state.Repo, state.Title, body, state.Labels)
+	if err != nil {
+		log.Printf("Failed to create GitHub issue: %v", err)
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Failed to create issue. Please try again later.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		delete(modalStates, stateKey)
+		return
+	}
+
+	confirmationMessage := fmt.Sprintf("✅ Issue #%d created successfully!\n%s", issue.Number, issue.HTMLURL)
+	if includeMarkdownNote {
+		confirmationMessage += "\n\n**Note:** You can use Markdown formatting in your descriptions. " +
+			"To add images or other attachments, please edit the issue directly on GitHub."
+	}
+
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: confirmationMessage,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
+
+	delete(modalStates, stateKey)
+}
 
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
@@ -89,36 +123,25 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 
 		// All fields collected - create the GitHub issue
-		body := buildIssueBody(state.SubmittedValues, i.Member.User.Username, i.Member.User.ID)
-		issue, err := GithubClient.CreateIssue(GithubOwner, GithubRepo, state.Title, body, state.Labels)
-		if err != nil {
-			log.Printf("Failed to create GitHub issue: %v", err)
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "❌ Failed to create issue. Please try again later.",
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
-			})
-			delete(modalStates, stateKey)
-			return
-		}
-
-		confirmationMessage := fmt.Sprintf("✅ Issue #%d created successfully!\n%s", issue.Number, issue.HTMLURL)
-
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: confirmationMessage,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-
-		delete(modalStates, stateKey)
+		createIssueFromState(s, i, state, stateKey, false)
 		return
 	}
 
 	// Simple modal (5 or fewer fields)
+	// Get owner and repo from modal config
+	_, _, owner, repo, err := config.GetAllFieldsForModal(command, channelID)
+	if err != nil {
+		log.Printf("Error getting modal config: %v", err)
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Failed to create issue. Configuration error.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
 	// Extract field values
 	fields := extractModalFields(data.Components)
 
@@ -148,7 +171,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	body := github.FormatIssueBody(username, userID, description)
 
-	issue, err := GithubClient.CreateIssue(GithubOwner, GithubRepo, title, body, labels)
+	issue, err := GithubClient.CreateIssue(owner, repo, title, body, labels)
 	if err != nil {
 		log.Printf("Failed to create GitHub issue: %v", err)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -244,37 +267,7 @@ func handleModalContinuation(s *discordgo.Session, i *discordgo.InteractionCreat
 	}
 
 	// All fields collected - create the GitHub issue
-	body := buildIssueBody(state.SubmittedValues, i.Member.User.Username, i.Member.User.ID)
-	issue, err := GithubClient.CreateIssue(GithubOwner, GithubRepo, state.Title, body, state.Labels)
-	if err != nil {
-		log.Printf("Failed to create GitHub issue: %v", err)
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "❌ Failed to create issue. Please try again later.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		delete(modalStates, stateKey)
-		return
-	}
-
-	confirmationMessage := fmt.Sprintf(
-		"✅ Issue #%d created successfully!\n%s\n\n"+
-			"**Note:** You can use Markdown formatting in your descriptions. "+
-			"To add images or other attachments, please edit the issue directly on GitHub.",
-		issue.Number, issue.HTMLURL,
-	)
-
-	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: confirmationMessage,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
-
-	delete(modalStates, stateKey)
+	createIssueFromState(s, i, state, stateKey, true)
 }
 
 func handleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
