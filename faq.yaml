@@ -25,6 +25,8 @@ faq:
     url: "https://meshtastic.org/docs/configuration/radio/device#role"
   - name: "Cold Weather Charging"
     url: "https://yycmesh.com/blog/cold-weather-charging"
+  - name: "Enter DFU Mode"
+    url: "https://meshtastic.org/docs/getting-started/flashing-firmware/nrf52/update-nrf52-bootloader/"
 
 software_modules:
   - name: "Ambient Lighting"
