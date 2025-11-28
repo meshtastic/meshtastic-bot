@@ -88,7 +88,12 @@ func formatChangelogMessage(base, head string, comparison *gogithub.CommitsCompa
 
 		author := commit.GetAuthor().GetLogin()
 		if author == "" {
-			author = commit.GetCommit().GetAuthor().GetName()
+			commitAuthor := commit.GetCommit().GetAuthor()
+			if commitAuthor != nil {
+				author = commitAuthor.GetName()
+			} else {
+				author = "Unknown"
+			}
 		}
 
 		sb.WriteString(fmt.Sprintf("- [`%s`](<%s>) %s - *%s*\n",
