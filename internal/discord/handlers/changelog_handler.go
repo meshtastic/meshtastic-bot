@@ -52,8 +52,9 @@ func handleChangelog(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	comparison, err := GithubClient.CompareCommits(GithubOwner, GithubRepo, base, head)
 	if err != nil {
 		log.Printf("Error comparing commits: %v", err)
+		errMsg := fmt.Sprintf("Failed to compare versions: %s...%s", base, head)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &[]string{fmt.Sprintf("Failed to compare versions: %s...%s", base, head)}[0],
+			Content: &errMsg,
 		})
 		return
 	}
