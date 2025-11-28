@@ -48,5 +48,25 @@ func getCommands() []*discordgo.ApplicationCommand {
 				},
 			},
 		},
+		{
+			Name:        "changelog",
+			Description: "View changes between two versions",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:         discordgo.ApplicationCommandOptionString,
+					Name:         "base",
+					Description:  "The base version (e.g. v2.6.0)",
+					Required:     true,
+					Autocomplete: true,
+				},
+				{
+					Type:         discordgo.ApplicationCommandOptionString,
+					Name:         "head",
+					Description:  "The head version (e.g. v2.6.4)",
+					Required:     true,
+					Autocomplete: true,
+				},
+			},
+		},
 	}
 }
