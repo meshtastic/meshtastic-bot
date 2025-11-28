@@ -96,8 +96,12 @@ func formatChangelogMessage(base, head string, comparison *gogithub.CommitsCompa
 			}
 		}
 
+		sha := commit.GetSHA()
+		if len(sha) > 7 {
+			sha = sha[:7]
+		}
 		sb.WriteString(fmt.Sprintf("- [`%s`](<%s>) %s - *%s*\n",
-			commit.GetSHA()[:7],
+			sha,
 			commit.GetHTMLURL(),
 			message,
 			author,
