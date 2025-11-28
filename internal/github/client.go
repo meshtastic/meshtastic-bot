@@ -40,6 +40,25 @@ func NewClient(token string) *Client {
 	}
 }
 
+func (c *Client) GetReleases(owner, repo string, limit int) ([]*github.RepositoryRelease, error) {
+	opts := &github.ListOptions{
+		PerPage: limit,
+	}
+	releases, _, err := c.client.Repositories.ListReleases(c.ctx, owner, repo, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list releases: %w", err)
+	}
+	return releases, nil
+}
+
+func (c *Client) CompareCommits(owner, repo, base, head string) (*github.CommitsComparison, error) {
+	comparison, _, err := c.client.Repositories.CompareCommits(c.ctx, owner, repo, base, head, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compare commits: %w", err)
+	}
+	return comparison, nil
+}
+
 func (c *Client) CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error) {
 	log.Printf("[GitHub API] Creating issue in %s/%s", owner, repo)
 	log.Printf("[GitHub API] Title: %s", title)
