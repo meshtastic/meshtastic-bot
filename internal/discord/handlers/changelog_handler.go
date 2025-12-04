@@ -11,12 +11,33 @@ import (
 	gogithub "github.com/google/go-github/v57/github"
 )
 
+const (
+	// ReleaseCacheTTL defines how long release autocomplete data is cached
+	ReleaseCacheTTL = 1 * time.Hour
+
+	// ComparisonCacheTTL defines how long changelog comparison results are cached
+	ComparisonCacheTTL = 1 * time.Hour
+)
+
 var (
 	releaseCache      []*gogithub.RepositoryRelease
 	releaseCacheMutex sync.RWMutex
 	lastCacheUpdate   time.Time
-	cacheDuration     = 5 * time.Minute
+	cacheDuration     = ReleaseCacheTTL
+
+	comparisonCache      map[string]*CachedComparison
+	comparisonCacheMutex sync.RWMutex
+	comparisonCacheTTL   = ComparisonCacheTTL
 )
+
+type CachedComparison struct {
+	Message   string
+	Timestamp time.Time
+}
+
+func init() {
+	comparisonCache = make(map[string]*CachedComparison)
+}
 
 func handleChangelog(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	options := i.ApplicationCommandData().Options
@@ -49,9 +70,9 @@ func handleChangelog(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 	})
 
-	comparison, err := GithubClient.CompareCommits(GithubOwner, GithubRepo, base, head)
+	message, err := getChangelogMessage(base, head)
 	if err != nil {
-		log.Printf("Error comparing commits: %v", err)
+		log.Printf("Error getting changelog: %v", err)
 		errMsg := fmt.Sprintf("Failed to compare versions: %s...%s", base, head)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: &errMsg,
@@ -59,12 +80,50 @@ func handleChangelog(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Format the output
-	message := formatChangelogMessage(base, head, comparison)
-
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: &message,
 	})
+}
+
+func getChangelogMessage(base, head string) (string, error) {
+	cacheKey := fmt.Sprintf("%s...%s", base, head)
+
+	// First check with read lock
+	comparisonCacheMutex.RLock()
+	if cached, exists := comparisonCache[cacheKey]; exists {
+		if time.Since(cached.Timestamp) < comparisonCacheTTL {
+			comparisonCacheMutex.RUnlock()
+			return cached.Message, nil
+		}
+	}
+	comparisonCacheMutex.RUnlock()
+
+	// Cache miss or expired - acquire write lock
+	comparisonCacheMutex.Lock()
+	defer comparisonCacheMutex.Unlock()
+
+	// Double-check after acquiring write lock
+	if cached, exists := comparisonCache[cacheKey]; exists {
+		if time.Since(cached.Timestamp) < comparisonCacheTTL {
+			return cached.Message, nil
+		}
+	}
+
+	// Fetch from GitHub
+	comparison, err := GithubClient.CompareCommits(GithubOwner, GithubRepo, base, head)
+	if err != nil {
+		return "", err
+	}
+
+	message := formatChangelogMessage(base, head, comparison)
+
+	// Store in cache
+	comparisonCache[cacheKey] = &CachedComparison{
+		Message:   message,
+		Timestamp: time.Now(),
+	}
+
+	return message, nil
 }
 
 func formatChangelogMessage(base, head string, comparison *gogithub.CommitsComparison) string {

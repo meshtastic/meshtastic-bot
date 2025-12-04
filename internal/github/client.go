@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/google/go-github/v57/github"
 	"golang.org/x/oauth2"
+)
+
+const (
+	// RepositoryCacheTTL defines how long repository metadata is cached
+	RepositoryCacheTTL = 4 * time.Hour
 )
 
 type Client interface {
@@ -17,11 +23,16 @@ type Client interface {
 	GetRepository(owner, repo string) (*github.Repository, error)
 }
 
+type CachedRepository struct {
+	Repository *github.Repository
+	Timestamp  time.Time
+}
+
 type LiveGitHubClient struct {
 	token     string
 	client    *github.Client
 	ctx       context.Context
-	repoCache map[string]*github.Repository
+	repoCache map[string]*CachedRepository
 	cacheMux  sync.RWMutex
 }
 
@@ -47,7 +58,7 @@ func NewClient(token string) Client {
 		token:     token,
 		client:    github.NewClient(tc),
 		ctx:       ctx,
-		repoCache: make(map[string]*github.Repository),
+		repoCache: make(map[string]*CachedRepository),
 	}
 }
 
@@ -106,13 +117,26 @@ func (c *LiveGitHubClient) CreateIssue(owner, repo, title, body string, labels [
 func (c *LiveGitHubClient) GetRepository(owner, repo string) (*github.Repository, error) {
 	cacheKey := fmt.Sprintf("%s/%s", owner, repo)
 
-	// Check cache first
+	// First check with read lock
 	c.cacheMux.RLock()
 	if cached, exists := c.repoCache[cacheKey]; exists {
-		c.cacheMux.RUnlock()
-		return cached, nil
+		if time.Since(cached.Timestamp) < RepositoryCacheTTL {
+			c.cacheMux.RUnlock()
+			return cached.Repository, nil
+		}
 	}
 	c.cacheMux.RUnlock()
+
+	// Cache miss or expired - acquire write lock
+	c.cacheMux.Lock()
+	defer c.cacheMux.Unlock()
+
+	// Double-check after acquiring write lock
+	if cached, exists := c.repoCache[cacheKey]; exists {
+		if time.Since(cached.Timestamp) < RepositoryCacheTTL {
+			return cached.Repository, nil
+		}
+	}
 
 	// Fetch from GitHub API
 	repository, _, err := c.client.Repositories.Get(c.ctx, owner, repo)
@@ -120,10 +144,11 @@ func (c *LiveGitHubClient) GetRepository(owner, repo string) (*github.Repository
 		return nil, fmt.Errorf("failed to get repository: %w", err)
 	}
 
-	// Store in cache
-	c.cacheMux.Lock()
-	c.repoCache[cacheKey] = repository
-	c.cacheMux.Unlock()
+	// Store in cache with timestamp
+	c.repoCache[cacheKey] = &CachedRepository{
+		Repository: repository,
+		Timestamp:  time.Now(),
+	}
 
 	return repository, nil
 }

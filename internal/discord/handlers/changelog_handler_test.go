@@ -543,7 +543,7 @@ func TestHandleChangelogAutocomplete_CacheReuse(t *testing.T) {
 	}
 
 	releaseCacheMutex.Lock()
-	lastCacheUpdate = time.Now().Add(-10 * time.Minute)
+	lastCacheUpdate = time.Now().Add(-2 * time.Hour)
 	releaseCacheMutex.Unlock()
 
 	handleChangelogAutocomplete(s, i)
@@ -901,5 +901,344 @@ func TestUpdateReleaseCache_EmptyCacheWithExpiredTime(t *testing.T) {
 
 	if cacheLen != 1 {
 		t.Errorf("Expected cache to be populated, got %d releases", cacheLen)
+	}
+}
+
+func TestGetChangelogMessage_CacheMiss(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	apiCallCount := 0
+	strPtr := func(s string) *string { return &s }
+	intPtr := func(i int) *int { return &i }
+
+	mockClient := &MockGitHubClient{
+		CompareCommitsFunc: func(owner, repo, base, head string) (*gogithub.CommitsComparison, error) {
+			apiCallCount++
+			return &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("abc123"),
+						HTMLURL: strPtr("https://github.com/commit/abc123"),
+						Commit: &gogithub.Commit{
+							Message: strPtr("test commit"),
+							Author:  &gogithub.CommitAuthor{Name: strPtr("Test Author")},
+						},
+						Author: &gogithub.User{Login: strPtr("testuser")},
+					},
+				},
+			}, nil
+		},
+	}
+	GithubClient = mockClient
+
+	comparisonCacheMutex.Lock()
+	comparisonCache = make(map[string]*CachedComparison)
+	comparisonCacheMutex.Unlock()
+
+	message, err := getChangelogMessage("v1.0.0", "v2.0.0")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if apiCallCount != 1 {
+		t.Errorf("Expected 1 API call on cache miss, got %d", apiCallCount)
+	}
+
+	if !strings.Contains(message, "v1.0.0") || !strings.Contains(message, "v2.0.0") {
+		t.Errorf("Expected message to contain version info, got: %s", message)
+	}
+}
+
+func TestGetChangelogMessage_CacheHit(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	apiCallCount := 0
+	strPtr := func(s string) *string { return &s }
+	intPtr := func(i int) *int { return &i }
+
+	mockClient := &MockGitHubClient{
+		CompareCommitsFunc: func(owner, repo, base, head string) (*gogithub.CommitsComparison, error) {
+			apiCallCount++
+			return &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("abc123"),
+						HTMLURL: strPtr("https://github.com/commit/abc123"),
+						Commit: &gogithub.Commit{
+							Message: strPtr("test commit"),
+							Author:  &gogithub.CommitAuthor{Name: strPtr("Test Author")},
+						},
+						Author: &gogithub.User{Login: strPtr("testuser")},
+					},
+				},
+			}, nil
+		},
+	}
+	GithubClient = mockClient
+
+	comparisonCacheMutex.Lock()
+	comparisonCache = make(map[string]*CachedComparison)
+	comparisonCacheMutex.Unlock()
+
+	message1, err := getChangelogMessage("v1.0.0", "v2.0.0")
+	if err != nil {
+		t.Errorf("Expected no error on first call, got %v", err)
+	}
+
+	if apiCallCount != 1 {
+		t.Errorf("Expected 1 API call on first request, got %d", apiCallCount)
+	}
+
+	message2, err := getChangelogMessage("v1.0.0", "v2.0.0")
+	if err != nil {
+		t.Errorf("Expected no error on second call, got %v", err)
+	}
+
+	if apiCallCount != 1 {
+		t.Errorf("Expected cache hit (still 1 API call), got %d", apiCallCount)
+	}
+
+	if message1 != message2 {
+		t.Error("Expected cached message to match original")
+	}
+}
+
+func TestGetChangelogMessage_CacheExpiration(t *testing.T) {
+	originalClient := GithubClient
+	originalTTL := comparisonCacheTTL
+	defer func() {
+		GithubClient = originalClient
+		comparisonCacheTTL = originalTTL
+	}()
+
+	comparisonCacheTTL = 100 * time.Millisecond
+
+	apiCallCount := 0
+	strPtr := func(s string) *string { return &s }
+	intPtr := func(i int) *int { return &i }
+
+	mockClient := &MockGitHubClient{
+		CompareCommitsFunc: func(owner, repo, base, head string) (*gogithub.CommitsComparison, error) {
+			apiCallCount++
+			return &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("abc123"),
+						HTMLURL: strPtr("https://github.com/commit/abc123"),
+						Commit: &gogithub.Commit{
+							Message: strPtr("test commit"),
+							Author:  &gogithub.CommitAuthor{Name: strPtr("Test Author")},
+						},
+						Author: &gogithub.User{Login: strPtr("testuser")},
+					},
+				},
+			}, nil
+		},
+	}
+	GithubClient = mockClient
+
+	comparisonCacheMutex.Lock()
+	comparisonCache = make(map[string]*CachedComparison)
+	comparisonCacheMutex.Unlock()
+
+	_, err := getChangelogMessage("v1.0.0", "v2.0.0")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if apiCallCount != 1 {
+		t.Errorf("Expected 1 API call initially, got %d", apiCallCount)
+	}
+
+	time.Sleep(150 * time.Millisecond)
+
+	_, err = getChangelogMessage("v1.0.0", "v2.0.0")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if apiCallCount != 2 {
+		t.Errorf("Expected cache expiration (2 API calls), got %d", apiCallCount)
+	}
+}
+
+func TestGetChangelogMessage_ErrorHandling(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	expectedErr := errors.New("GitHub API error")
+
+	mockClient := &MockGitHubClient{
+		CompareCommitsFunc: func(owner, repo, base, head string) (*gogithub.CommitsComparison, error) {
+			return nil, expectedErr
+		},
+	}
+	GithubClient = mockClient
+
+	comparisonCacheMutex.Lock()
+	comparisonCache = make(map[string]*CachedComparison)
+	comparisonCacheMutex.Unlock()
+
+	_, err := getChangelogMessage("v1.0.0", "v2.0.0")
+	if err == nil {
+		t.Error("Expected error from failed API call, got nil")
+	}
+
+	if !errors.Is(err, expectedErr) {
+		t.Errorf("Expected error to be %v, got %v", expectedErr, err)
+	}
+
+	comparisonCacheMutex.RLock()
+	cacheLen := len(comparisonCache)
+	comparisonCacheMutex.RUnlock()
+
+	if cacheLen != 0 {
+		t.Errorf("Expected cache to remain empty after error, got %d entries", cacheLen)
+	}
+}
+
+func TestGetChangelogMessage_ConcurrentAccess(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	apiCallCount := 0
+	var apiCallMutex sync.Mutex
+	strPtr := func(s string) *string { return &s }
+	intPtr := func(i int) *int { return &i }
+
+	mockClient := &MockGitHubClient{
+		CompareCommitsFunc: func(owner, repo, base, head string) (*gogithub.CommitsComparison, error) {
+			apiCallMutex.Lock()
+			apiCallCount++
+			apiCallMutex.Unlock()
+			time.Sleep(50 * time.Millisecond)
+			return &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("abc123"),
+						HTMLURL: strPtr("https://github.com/commit/abc123"),
+						Commit: &gogithub.Commit{
+							Message: strPtr("test commit"),
+							Author:  &gogithub.CommitAuthor{Name: strPtr("Test Author")},
+						},
+						Author: &gogithub.User{Login: strPtr("testuser")},
+					},
+				},
+			}, nil
+		},
+	}
+	GithubClient = mockClient
+
+	comparisonCacheMutex.Lock()
+	comparisonCache = make(map[string]*CachedComparison)
+	comparisonCacheMutex.Unlock()
+
+	const numGoroutines = 10
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	messages := make([]string, numGoroutines)
+	errChan := make(chan error, numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(index int) {
+			defer wg.Done()
+			msg, err := getChangelogMessage("v1.0.0", "v2.0.0")
+			if err != nil {
+				errChan <- err
+				return
+			}
+			messages[index] = msg
+		}(i)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		t.Errorf("Unexpected error from goroutine: %v", err)
+	}
+
+	apiCallMutex.Lock()
+	finalCallCount := apiCallCount
+	apiCallMutex.Unlock()
+
+	if finalCallCount > 3 {
+		t.Errorf("Expected at most 3 API calls with concurrent access, got %d", finalCallCount)
+	}
+
+	firstMessage := messages[0]
+	for i, msg := range messages {
+		if msg != firstMessage {
+			t.Errorf("Message %d differs from first message", i)
+		}
+	}
+}
+
+func TestGetChangelogMessage_DifferentComparisons(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	apiCallCount := 0
+	strPtr := func(s string) *string { return &s }
+	intPtr := func(i int) *int { return &i }
+
+	mockClient := &MockGitHubClient{
+		CompareCommitsFunc: func(owner, repo, base, head string) (*gogithub.CommitsComparison, error) {
+			apiCallCount++
+			return &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("abc123"),
+						HTMLURL: strPtr("https://github.com/commit/abc123"),
+						Commit: &gogithub.Commit{
+							Message: strPtr("test commit"),
+							Author:  &gogithub.CommitAuthor{Name: strPtr("Test Author")},
+						},
+						Author: &gogithub.User{Login: strPtr("testuser")},
+					},
+				},
+			}, nil
+		},
+	}
+	GithubClient = mockClient
+
+	comparisonCacheMutex.Lock()
+	comparisonCache = make(map[string]*CachedComparison)
+	comparisonCacheMutex.Unlock()
+
+	msg1, _ := getChangelogMessage("v1.0.0", "v2.0.0")
+	msg2, _ := getChangelogMessage("v2.0.0", "v3.0.0")
+
+	if apiCallCount != 2 {
+		t.Errorf("Expected 2 API calls for different comparisons, got %d", apiCallCount)
+	}
+
+	if !strings.Contains(msg1, "v1.0.0") {
+		t.Error("First message should contain v1.0.0")
+	}
+
+	if !strings.Contains(msg2, "v2.0.0") && !strings.Contains(msg2, "v3.0.0") {
+		t.Error("Second message should contain v2.0.0 or v3.0.0")
+	}
+
+	comparisonCacheMutex.RLock()
+	cacheLen := len(comparisonCache)
+	comparisonCacheMutex.RUnlock()
+
+	if cacheLen != 2 {
+		t.Errorf("Expected 2 cache entries, got %d", cacheLen)
 	}
 }
