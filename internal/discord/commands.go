@@ -68,5 +68,17 @@ func getCommands() []*discordgo.ApplicationCommand {
 				},
 			},
 		},
+		{
+			Name:        "repo",
+			Description: "Get the GitHub URL for a repository",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "name",
+					Description: "Repository name (optional, defaults to current repo)",
+					Required:    false,
+				},
+			},
+		},
 	}
 }

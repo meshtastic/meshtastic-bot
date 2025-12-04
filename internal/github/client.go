@@ -4,15 +4,25 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/google/go-github/v57/github"
 	"golang.org/x/oauth2"
 )
 
-type Client struct {
-	token  string
-	client *github.Client
-	ctx    context.Context
+type Client interface {
+	GetReleases(owner, repo string, limit int) ([]*github.RepositoryRelease, error)
+	CompareCommits(owner, repo, base, head string) (*github.CommitsComparison, error)
+	CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error)
+	GetRepository(owner, repo string) (*github.Repository, error)
+}
+
+type LiveGitHubClient struct {
+	token     string
+	client    *github.Client
+	ctx       context.Context
+	repoCache map[string]*github.Repository
+	cacheMux  sync.RWMutex
 }
 
 type IssueRequest struct {
@@ -27,20 +37,21 @@ type IssueResponse struct {
 	ID      int64  `json:"id"`
 }
 
-func NewClient(token string) *Client {
+func NewClient(token string) Client {
 	ctx := context.Background()
 
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	tc := oauth2.NewClient(ctx, ts)
 
-	return &Client{
-		token:  token,
-		client: github.NewClient(tc),
-		ctx:    ctx,
+	return &LiveGitHubClient{
+		token:     token,
+		client:    github.NewClient(tc),
+		ctx:       ctx,
+		repoCache: make(map[string]*github.Repository),
 	}
 }
 
-func (c *Client) GetReleases(owner, repo string, limit int) ([]*github.RepositoryRelease, error) {
+func (c *LiveGitHubClient) GetReleases(owner, repo string, limit int) ([]*github.RepositoryRelease, error) {
 	opts := &github.ListOptions{
 		PerPage: limit,
 	}
@@ -51,7 +62,7 @@ func (c *Client) GetReleases(owner, repo string, limit int) ([]*github.Repositor
 	return releases, nil
 }
 
-func (c *Client) CompareCommits(owner, repo, base, head string) (*github.CommitsComparison, error) {
+func (c *LiveGitHubClient) CompareCommits(owner, repo, base, head string) (*github.CommitsComparison, error) {
 	comparison, _, err := c.client.Repositories.CompareCommits(c.ctx, owner, repo, base, head, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compare commits: %w", err)
@@ -59,7 +70,7 @@ func (c *Client) CompareCommits(owner, repo, base, head string) (*github.Commits
 	return comparison, nil
 }
 
-func (c *Client) CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error) {
+func (c *LiveGitHubClient) CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error) {
 	log.Printf("[GitHub API] Creating issue in %s/%s", owner, repo)
 	log.Printf("[GitHub API] Title: %s", title)
 	log.Printf("[GitHub API] Labels: %v", labels)
@@ -87,6 +98,31 @@ func (c *Client) CreateIssue(owner, repo, title, body string, labels []string) (
 		HTMLURL: issue.GetHTMLURL(),
 		ID:      issue.GetID(),
 	}, nil
+}
+
+func (c *LiveGitHubClient) GetRepository(owner, repo string) (*github.Repository, error) {
+	cacheKey := fmt.Sprintf("%s/%s", owner, repo)
+
+	// Check cache first
+	c.cacheMux.RLock()
+	if cached, exists := c.repoCache[cacheKey]; exists {
+		c.cacheMux.RUnlock()
+		return cached, nil
+	}
+	c.cacheMux.RUnlock()
+
+	// Fetch from GitHub API
+	repository, _, err := c.client.Repositories.Get(c.ctx, owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get repository: %w", err)
+	}
+
+	// Store in cache
+	c.cacheMux.Lock()
+	c.repoCache[cacheKey] = repository
+	c.cacheMux.Unlock()
+
+	return repository, nil
 }
 
 func FormatIssueBody(username, userID, description string) string {

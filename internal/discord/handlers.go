@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	githubClient *github.Client
+	githubClient github.Client
 )
 
 // ModalState tracks the state of multi-part modals
