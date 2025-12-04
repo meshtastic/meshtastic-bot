@@ -63,8 +63,11 @@ func (c *LiveGitHubClient) GetReleases(owner, repo string, limit int) ([]*github
 }
 
 func (c *LiveGitHubClient) CompareCommits(owner, repo, base, head string) (*github.CommitsComparison, error) {
-	comparison, _, err := c.client.Repositories.CompareCommits(c.ctx, owner, repo, base, head, nil)
+	comparison, resp, err := c.client.Repositories.CompareCommits(c.ctx, owner, repo, base, head, nil)
 	if err != nil {
+		if resp != nil {
+			return nil, fmt.Errorf("github API returned %d: failed to compare commits: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("failed to compare commits: %w", err)
 	}
 	return comparison, nil
