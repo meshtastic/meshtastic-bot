@@ -159,6 +159,84 @@ func TestFormatChangelogMessage(t *testing.T) {
 				"*Showing last 10 of 15 commits*",
 			},
 		},
+		{
+			name: "nil author with fallback to commit author",
+			base: "v1.0.0",
+			head: "v1.1.0",
+			comparison: &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("abc123"),
+						HTMLURL: strPtr("https://github.com/commit/abc123"),
+						Commit: &gogithub.Commit{
+							Message: strPtr("commit with nil author"),
+							Author: &gogithub.CommitAuthor{
+								Name: strPtr("Commit Author"),
+							},
+						},
+						Author: nil, // nil author should trigger fallback
+					},
+				},
+			},
+			want: []string{
+				"commit with nil author",
+				"Commit Author",
+			},
+		},
+		{
+			name: "nil commit author with fallback to Unknown",
+			base: "v1.0.0",
+			head: "v1.1.0",
+			comparison: &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("def456"),
+						HTMLURL: strPtr("https://github.com/commit/def456"),
+						Commit: &gogithub.Commit{
+							Message: strPtr("commit with all authors nil"),
+							Author:  nil, // nil commit author
+						},
+						Author: nil, // nil author
+					},
+				},
+			},
+			want: []string{
+				"commit with all authors nil",
+				"Unknown",
+			},
+		},
+		{
+			name: "empty author login with fallback to commit author",
+			base: "v1.0.0",
+			head: "v1.1.0",
+			comparison: &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("ghi789"),
+						HTMLURL: strPtr("https://github.com/commit/ghi789"),
+						Commit: &gogithub.Commit{
+							Message: strPtr("commit with empty login"),
+							Author: &gogithub.CommitAuthor{
+								Name: strPtr("Fallback Author"),
+							},
+						},
+						Author: &gogithub.User{
+							Login: strPtr(""), // empty login
+						},
+					},
+				},
+			},
+			want: []string{
+				"commit with empty login",
+				"Fallback Author",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1240,5 +1318,432 @@ func TestGetChangelogMessage_DifferentComparisons(t *testing.T) {
 
 	if cacheLen != 2 {
 		t.Errorf("Expected 2 cache entries, got %d", cacheLen)
+	}
+}
+
+func TestHandleChangelog_MissingBaseParameter(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	mockClient := &MockGitHubClient{}
+	GithubClient = mockClient
+
+	respondCalled := false
+	var capturedResponse *discordgo.InteractionResponse
+
+	s, _ := discordgo.New("")
+	s.Client = &http.Client{
+		Transport: &MockRoundTripper{
+			RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+				respondCalled = true
+				var data discordgo.InteractionResponse
+				if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+					t.Errorf("Failed to decode request body: %v", err)
+				}
+				capturedResponse = &data
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewBufferString("{}")),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	i := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type: discordgo.InteractionApplicationCommand,
+			Data: discordgo.ApplicationCommandInteractionData{
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{
+						Name:  "head",
+						Type:  discordgo.ApplicationCommandOptionString,
+						Value: "v2.0.0",
+					},
+				},
+			},
+		},
+	}
+
+	handleChangelog(s, i)
+
+	if !respondCalled {
+		t.Error("Expected InteractionRespond to be called")
+	}
+
+	if capturedResponse.Type != discordgo.InteractionResponseChannelMessageWithSource {
+		t.Errorf("Expected response type ChannelMessageWithSource, got %v", capturedResponse.Type)
+	}
+
+	if capturedResponse.Data.Content != "Please provide both base and head versions." {
+		t.Errorf("Expected validation error message, got: %s", capturedResponse.Data.Content)
+	}
+
+	if capturedResponse.Data.Flags != discordgo.MessageFlagsEphemeral {
+		t.Error("Expected ephemeral flag to be set")
+	}
+}
+
+func TestHandleChangelog_MissingHeadParameter(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	mockClient := &MockGitHubClient{}
+	GithubClient = mockClient
+
+	respondCalled := false
+	var capturedResponse *discordgo.InteractionResponse
+
+	s, _ := discordgo.New("")
+	s.Client = &http.Client{
+		Transport: &MockRoundTripper{
+			RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+				respondCalled = true
+				var data discordgo.InteractionResponse
+				if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+					t.Errorf("Failed to decode request body: %v", err)
+				}
+				capturedResponse = &data
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewBufferString("{}")),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	i := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type: discordgo.InteractionApplicationCommand,
+			Data: discordgo.ApplicationCommandInteractionData{
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{
+						Name:  "base",
+						Type:  discordgo.ApplicationCommandOptionString,
+						Value: "v1.0.0",
+					},
+				},
+			},
+		},
+	}
+
+	handleChangelog(s, i)
+
+	if !respondCalled {
+		t.Error("Expected InteractionRespond to be called")
+	}
+
+	if capturedResponse.Data.Content != "Please provide both base and head versions." {
+		t.Errorf("Expected validation error message, got: %s", capturedResponse.Data.Content)
+	}
+}
+
+func TestHandleChangelog_EmptyParameters(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	mockClient := &MockGitHubClient{}
+	GithubClient = mockClient
+
+	respondCalled := false
+	var capturedResponse *discordgo.InteractionResponse
+
+	s, _ := discordgo.New("")
+	s.Client = &http.Client{
+		Transport: &MockRoundTripper{
+			RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+				respondCalled = true
+				var data discordgo.InteractionResponse
+				if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+					t.Errorf("Failed to decode request body: %v", err)
+				}
+				capturedResponse = &data
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewBufferString("{}")),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	i := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type: discordgo.InteractionApplicationCommand,
+			Data: discordgo.ApplicationCommandInteractionData{
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{
+						Name:  "base",
+						Type:  discordgo.ApplicationCommandOptionString,
+						Value: "",
+					},
+					{
+						Name:  "head",
+						Type:  discordgo.ApplicationCommandOptionString,
+						Value: "",
+					},
+				},
+			},
+		},
+	}
+
+	handleChangelog(s, i)
+
+	if !respondCalled {
+		t.Error("Expected InteractionRespond to be called")
+	}
+
+	if capturedResponse.Data.Content != "Please provide both base and head versions." {
+		t.Errorf("Expected validation error message, got: %s", capturedResponse.Data.Content)
+	}
+}
+
+func TestHandleChangelog_SuccessfulComparison(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	strPtr := func(s string) *string { return &s }
+	intPtr := func(i int) *int { return &i }
+
+	mockClient := &MockGitHubClient{
+		CompareCommitsFunc: func(owner, repo, base, head string) (*gogithub.CommitsComparison, error) {
+			return &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("abc123"),
+						HTMLURL: strPtr("https://github.com/commit/abc123"),
+						Commit: &gogithub.Commit{
+							Message: strPtr("test commit"),
+							Author:  &gogithub.CommitAuthor{Name: strPtr("Test Author")},
+						},
+						Author: &gogithub.User{Login: strPtr("testuser")},
+					},
+				},
+			}, nil
+		},
+	}
+	GithubClient = mockClient
+
+	comparisonCacheMutex.Lock()
+	comparisonCache = make(map[string]*CachedComparison)
+	comparisonCacheMutex.Unlock()
+
+	callSequence := []string{}
+	deferredResponseSeen := false
+	editResponseSeen := false
+	var finalContent string
+
+	s, _ := discordgo.New("")
+	s.Client = &http.Client{
+		Transport: &MockRoundTripper{
+			RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.Path, "/callback") {
+					callSequence = append(callSequence, "respond")
+					var data discordgo.InteractionResponse
+					if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+						t.Errorf("Failed to decode request body: %v", err)
+					}
+					if data.Type == discordgo.InteractionResponseDeferredChannelMessageWithSource {
+						deferredResponseSeen = true
+					}
+				} else if req.Method == "PATCH" {
+					callSequence = append(callSequence, "edit")
+					editResponseSeen = true
+					var edit discordgo.WebhookEdit
+					if err := json.NewDecoder(req.Body).Decode(&edit); err != nil {
+						t.Errorf("Failed to decode edit body: %v", err)
+					}
+					if edit.Content != nil {
+						finalContent = *edit.Content
+					}
+				}
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewBufferString("{}")),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	i := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type: discordgo.InteractionApplicationCommand,
+			Data: discordgo.ApplicationCommandInteractionData{
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{
+						Name:  "base",
+						Type:  discordgo.ApplicationCommandOptionString,
+						Value: "v1.0.0",
+					},
+					{
+						Name:  "head",
+						Type:  discordgo.ApplicationCommandOptionString,
+						Value: "v2.0.0",
+					},
+				},
+			},
+		},
+	}
+
+	handleChangelog(s, i)
+
+	if !deferredResponseSeen {
+		t.Error("Expected deferred response to be sent")
+	}
+
+	if !editResponseSeen {
+		t.Error("Expected response edit to be called")
+	}
+
+	if len(callSequence) != 2 || callSequence[0] != "respond" || callSequence[1] != "edit" {
+		t.Errorf("Expected call sequence [respond, edit], got %v", callSequence)
+	}
+
+	if !strings.Contains(finalContent, "v1.0.0") || !strings.Contains(finalContent, "v2.0.0") {
+		t.Errorf("Expected final content to contain version info, got: %s", finalContent)
+	}
+
+	if !strings.Contains(finalContent, "test commit") {
+		t.Errorf("Expected final content to contain commit message, got: %s", finalContent)
+	}
+}
+
+func TestHandleChangelog_GitHubAPIError(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	expectedErr := errors.New("GitHub API error")
+	mockClient := &MockGitHubClient{
+		CompareCommitsFunc: func(owner, repo, base, head string) (*gogithub.CommitsComparison, error) {
+			return nil, expectedErr
+		},
+	}
+	GithubClient = mockClient
+
+	comparisonCacheMutex.Lock()
+	comparisonCache = make(map[string]*CachedComparison)
+	comparisonCacheMutex.Unlock()
+
+	deferredResponseSeen := false
+	editResponseSeen := false
+	var errorContent string
+
+	s, _ := discordgo.New("")
+	s.Client = &http.Client{
+		Transport: &MockRoundTripper{
+			RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.Path, "/callback") {
+					var data discordgo.InteractionResponse
+					if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+						t.Errorf("Failed to decode request body: %v", err)
+					}
+					if data.Type == discordgo.InteractionResponseDeferredChannelMessageWithSource {
+						deferredResponseSeen = true
+					}
+				} else if req.Method == "PATCH" {
+					editResponseSeen = true
+					var edit discordgo.WebhookEdit
+					if err := json.NewDecoder(req.Body).Decode(&edit); err != nil {
+						t.Errorf("Failed to decode edit body: %v", err)
+					}
+					if edit.Content != nil {
+						errorContent = *edit.Content
+					}
+				}
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewBufferString("{}")),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	i := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type: discordgo.InteractionApplicationCommand,
+			Data: discordgo.ApplicationCommandInteractionData{
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{
+						Name:  "base",
+						Type:  discordgo.ApplicationCommandOptionString,
+						Value: "v1.0.0",
+					},
+					{
+						Name:  "head",
+						Type:  discordgo.ApplicationCommandOptionString,
+						Value: "v2.0.0",
+					},
+				},
+			},
+		},
+	}
+
+	handleChangelog(s, i)
+
+	if !deferredResponseSeen {
+		t.Error("Expected deferred response to be sent")
+	}
+
+	if !editResponseSeen {
+		t.Error("Expected error response edit to be called")
+	}
+
+	expectedErrorMsg := "Failed to compare versions: v1.0.0...v2.0.0"
+	if errorContent != expectedErrorMsg {
+		t.Errorf("Expected error message %q, got %q", expectedErrorMsg, errorContent)
+	}
+}
+
+func TestHandleChangelog_NoOptions(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	mockClient := &MockGitHubClient{}
+	GithubClient = mockClient
+
+	respondCalled := false
+	var capturedResponse *discordgo.InteractionResponse
+
+	s, _ := discordgo.New("")
+	s.Client = &http.Client{
+		Transport: &MockRoundTripper{
+			RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+				respondCalled = true
+				var data discordgo.InteractionResponse
+				if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+					t.Errorf("Failed to decode request body: %v", err)
+				}
+				capturedResponse = &data
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewBufferString("{}")),
+					Header:     make(http.Header),
+				}, nil
+			},
+		},
+	}
+
+	i := &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type: discordgo.InteractionApplicationCommand,
+			Data: discordgo.ApplicationCommandInteractionData{
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{},
+			},
+		},
+	}
+
+	handleChangelog(s, i)
+
+	if !respondCalled {
+		t.Error("Expected InteractionRespond to be called")
+	}
+
+	if capturedResponse.Data.Content != "Please provide both base and head versions." {
+		t.Errorf("Expected validation error message, got: %s", capturedResponse.Data.Content)
 	}
 }
