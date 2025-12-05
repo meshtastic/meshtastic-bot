@@ -4,15 +4,36 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/google/go-github/v57/github"
 	"golang.org/x/oauth2"
 )
 
-type Client struct {
-	token  string
-	client *github.Client
-	ctx    context.Context
+const (
+	// RepositoryCacheTTL defines how long repository metadata is cached
+	RepositoryCacheTTL = 4 * time.Hour
+)
+
+type Client interface {
+	GetReleases(owner, repo string, limit int) ([]*github.RepositoryRelease, error)
+	CompareCommits(owner, repo, base, head string) (*github.CommitsComparison, error)
+	CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error)
+	GetRepository(owner, repo string) (*github.Repository, error)
+}
+
+type CachedRepository struct {
+	Repository *github.Repository
+	Timestamp  time.Time
+}
+
+type LiveGitHubClient struct {
+	token     string
+	client    *github.Client
+	ctx       context.Context
+	repoCache map[string]*CachedRepository
+	cacheMux  sync.RWMutex
 }
 
 type IssueRequest struct {
@@ -27,20 +48,43 @@ type IssueResponse struct {
 	ID      int64  `json:"id"`
 }
 
-func NewClient(token string) *Client {
+func NewClient(token string) Client {
 	ctx := context.Background()
 
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	tc := oauth2.NewClient(ctx, ts)
 
-	return &Client{
-		token:  token,
-		client: github.NewClient(tc),
-		ctx:    ctx,
+	return &LiveGitHubClient{
+		token:     token,
+		client:    github.NewClient(tc),
+		ctx:       ctx,
+		repoCache: make(map[string]*CachedRepository),
 	}
 }
 
-func (c *Client) CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error) {
+func (c *LiveGitHubClient) GetReleases(owner, repo string, limit int) ([]*github.RepositoryRelease, error) {
+	opts := &github.ListOptions{
+		PerPage: limit,
+	}
+	releases, _, err := c.client.Repositories.ListReleases(c.ctx, owner, repo, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list releases: %w", err)
+	}
+	return releases, nil
+}
+
+func (c *LiveGitHubClient) CompareCommits(owner, repo, base, head string) (*github.CommitsComparison, error) {
+	comparison, resp, err := c.client.Repositories.CompareCommits(c.ctx, owner, repo, base, head, nil)
+	if err != nil {
+		if resp != nil {
+			return nil, fmt.Errorf("github API returned %d: failed to compare commits: %w", resp.StatusCode, err)
+		}
+		return nil, fmt.Errorf("failed to compare commits: %w", err)
+	}
+	return comparison, nil
+}
+
+func (c *LiveGitHubClient) CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error) {
 	log.Printf("[GitHub API] Creating issue in %s/%s", owner, repo)
 	log.Printf("[GitHub API] Title: %s", title)
 	log.Printf("[GitHub API] Labels: %v", labels)
@@ -68,6 +112,45 @@ func (c *Client) CreateIssue(owner, repo, title, body string, labels []string) (
 		HTMLURL: issue.GetHTMLURL(),
 		ID:      issue.GetID(),
 	}, nil
+}
+
+func (c *LiveGitHubClient) GetRepository(owner, repo string) (*github.Repository, error) {
+	cacheKey := fmt.Sprintf("%s/%s", owner, repo)
+
+	// First check with read lock
+	c.cacheMux.RLock()
+	if cached, exists := c.repoCache[cacheKey]; exists {
+		if time.Since(cached.Timestamp) < RepositoryCacheTTL {
+			c.cacheMux.RUnlock()
+			return cached.Repository, nil
+		}
+	}
+	c.cacheMux.RUnlock()
+
+	// Cache miss or expired - acquire write lock
+	c.cacheMux.Lock()
+	defer c.cacheMux.Unlock()
+
+	// Double-check after acquiring write lock
+	if cached, exists := c.repoCache[cacheKey]; exists {
+		if time.Since(cached.Timestamp) < RepositoryCacheTTL {
+			return cached.Repository, nil
+		}
+	}
+
+	// Fetch from GitHub API
+	repository, _, err := c.client.Repositories.Get(c.ctx, owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get repository: %w", err)
+	}
+
+	// Store in cache with timestamp
+	c.repoCache[cacheKey] = &CachedRepository{
+		Repository: repository,
+		Timestamp:  time.Now(),
+	}
+
+	return repository, nil
 }
 
 func FormatIssueBody(username, userID, description string) string {
