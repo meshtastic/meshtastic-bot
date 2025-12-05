@@ -77,7 +77,7 @@ func TestFormatChangelogMessage(t *testing.T) {
 		head       string
 		comparison *gogithub.CommitsComparison
 		want       []string // Substrings that should be present
-		dontWant   []string // Substrings that should be present
+		dontWant   []string // Substrings that should NOT be present
 	}{
 		{
 			name: "basic comparison",
