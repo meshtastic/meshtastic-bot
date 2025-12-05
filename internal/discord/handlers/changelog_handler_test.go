@@ -237,6 +237,50 @@ func TestFormatChangelogMessage(t *testing.T) {
 				"Fallback Author",
 			},
 		},
+		{
+			name: "nil commit object - tests GetCommit() returning nil",
+			base: "v1.0.0",
+			head: "v1.1.0",
+			comparison: &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("jkl012"),
+						HTMLURL: strPtr("https://github.com/commit/jkl012"),
+						Commit:  nil, // nil commit object
+						Author: &gogithub.User{
+							Login: strPtr("testuser"),
+						},
+					},
+				},
+			},
+			want: []string{
+				"Total commits: 1",
+				"testuser",
+			},
+		},
+		{
+			name: "nil commit and nil author - complete fallback to Unknown",
+			base: "v1.0.0",
+			head: "v1.1.0",
+			comparison: &gogithub.CommitsComparison{
+				TotalCommits: intPtr(1),
+				HTMLURL:      strPtr("https://github.com/compare"),
+				Commits: []*gogithub.RepositoryCommit{
+					{
+						SHA:     strPtr("mno345"),
+						HTMLURL: strPtr("https://github.com/commit/mno345"),
+						Commit:  nil, // nil commit
+						Author:  nil, // nil author
+					},
+				},
+			},
+			want: []string{
+				"Total commits: 1",
+				"Unknown",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -979,6 +1023,94 @@ func TestUpdateReleaseCache_EmptyCacheWithExpiredTime(t *testing.T) {
 
 	if cacheLen != 1 {
 		t.Errorf("Expected cache to be populated, got %d releases", cacheLen)
+	}
+}
+
+func TestUpdateReleaseCache_EmptyReleasesFromAPI(t *testing.T) {
+	originalClient := GithubClient
+	defer func() { GithubClient = originalClient }()
+
+	mockClient := &MockGitHubClient{
+		GetReleasesFunc: func(owner, repo string, limit int) ([]*gogithub.RepositoryRelease, error) {
+			return []*gogithub.RepositoryRelease{}, nil
+		},
+	}
+	GithubClient = mockClient
+
+	releaseCacheMutex.Lock()
+	releaseCache = nil
+	lastCacheUpdate = time.Time{}
+	releaseCacheMutex.Unlock()
+
+	err := updateReleaseCache()
+	if err != nil {
+		t.Errorf("Expected no error when API returns empty releases, got %v", err)
+	}
+
+	releaseCacheMutex.RLock()
+	defer releaseCacheMutex.RUnlock()
+
+	if releaseCache == nil {
+		t.Error("Expected releaseCache to be initialized (empty slice), not nil")
+	}
+
+	if len(releaseCache) != 0 {
+		t.Errorf("Expected empty cache, got %d releases", len(releaseCache))
+	}
+
+	if lastCacheUpdate.IsZero() {
+		t.Error("Expected lastCacheUpdate to be set even with empty releases")
+	}
+}
+
+func TestUpdateReleaseCache_ParametersPassedCorrectly(t *testing.T) {
+	originalClient := GithubClient
+	originalOwner := GithubOwner
+	originalRepo := GithubRepo
+	defer func() {
+		GithubClient = originalClient
+		GithubOwner = originalOwner
+		GithubRepo = originalRepo
+	}()
+
+	GithubOwner = "test-owner"
+	GithubRepo = "test-repo"
+
+	var capturedOwner, capturedRepo string
+	var capturedLimit int
+
+	mockClient := &MockGitHubClient{
+		GetReleasesFunc: func(owner, repo string, limit int) ([]*gogithub.RepositoryRelease, error) {
+			capturedOwner = owner
+			capturedRepo = repo
+			capturedLimit = limit
+			return []*gogithub.RepositoryRelease{
+				{TagName: gogithub.String("v1.0.0")},
+			}, nil
+		},
+	}
+	GithubClient = mockClient
+
+	releaseCacheMutex.Lock()
+	releaseCache = nil
+	lastCacheUpdate = time.Time{}
+	releaseCacheMutex.Unlock()
+
+	err := updateReleaseCache()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	if capturedOwner != "test-owner" {
+		t.Errorf("Expected owner 'test-owner', got %q", capturedOwner)
+	}
+
+	if capturedRepo != "test-repo" {
+		t.Errorf("Expected repo 'test-repo', got %q", capturedRepo)
+	}
+
+	if capturedLimit != 100 {
+		t.Errorf("Expected limit 100, got %d", capturedLimit)
 	}
 }
 
