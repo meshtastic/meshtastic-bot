@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	GithubClient *github.Client
+	GithubClient github.Client
 	GithubOwner  string
 	GithubRepo   string
 )
@@ -34,10 +34,12 @@ type ModalState struct {
 var modalStates = make(map[string]*ModalState)
 
 var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
-	"tapsign": handleTapsign,
-	"feature": handleFeature,
-	"faq":     handleFaq,
-	"bug":     handleBug,
+	"tapsign":   handleTapsign,
+	"feature":   handleFeature,
+	"faq":       handleFaq,
+	"bug":       handleBug,
+	"changelog": handleChangelog,
+	"repo":      handleRepo,
 }
 
 // HandleInteraction routes interactions to appropriate handlers
@@ -60,7 +62,9 @@ func handleTapsign(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	helpText := "**How to get help or make a suggestion:**\n" +
 		"`/bug`: To report a bug with the app.\n" +
 		"`/feature`: To request a new feature. \n" +
-		"`/faq`: Frequently Asked Questions.\n"
+		"`/faq`: Frequently Asked Questions.\n" +
+		"`/changelog`: View changes between two versions.\n" +
+		"`/repo`: Get the GitHub URL for a repository.\n"
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -77,5 +81,7 @@ func handleAutocomplete(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	switch data.Name {
 	case "faq":
 		handleFaqAutocomplete(s, i)
+	case "changelog":
+		handleChangelogAutocomplete(s, i)
 	}
 }
