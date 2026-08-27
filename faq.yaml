@@ -27,6 +27,10 @@ faq:
     url: "https://yycmesh.com/blog/cold-weather-charging"
   - name: "Enter DFU Mode"
     url: "https://meshtastic.org/docs/getting-started/flashing-firmware/nrf52/update-nrf52-bootloader/"
+  - name: "App Units & Locale"
+    url: "https://meshtastic.org/docs/software/android/user/units-and-locale"
+  - name: "Device Display Units"
+    url: "https://meshtastic.org/docs/configuration/radio/display#preferred-display-units"
 
 software_modules:
   - name: "Ambient Lighting"
