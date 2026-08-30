@@ -283,7 +283,7 @@ curl http://localhost:8080/health
 
 The project uses GitHub Actions for continuous integration.
 
-**Workflow:** `.github/workflows/ci.yml` and `.github/workflows/pr.yml`
+**Workflow:** `.github/workflows/ci.yml`
 
 **On Pull Requests & Pushes:**
 - Unit tests 
@@ -318,8 +318,7 @@ meshtastic-bot/
 │       └── routes.go
 ├── .github/                 # CI/CD workflows
 │   └── workflows/
-│       ├── ci.yml           # Main CI/CD pipeline
-│       └── pr.yml           # Pull request checks
+│       └── ci.yml           # CI/CD pipeline (pull requests and main)
 ├── config.yaml              # Command configuration
 ├── faq.yaml                 # FAQ content
 ├── run.sh                   # Docker runner script
