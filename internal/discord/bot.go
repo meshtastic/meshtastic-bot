@@ -91,18 +91,19 @@ func (b *DiscordBot) Stop(ctx context.Context) error {
 }
 
 func (b *DiscordBot) registerCommands() error {
-	registeredCommands := make([]*discordgo.ApplicationCommand, 0, len(b.commands))
+	// Bulk overwrite makes the registered set exactly match b.commands, so a
+	// command removed from the code is also removed from Discord. Registering
+	// one at a time leaves withdrawn commands visible to users indefinitely.
+	registeredCommands, err := b.session.ApplicationCommandBulkOverwrite(
+		b.session.State.User.ID,
+		b.config.ServerID,
+		b.commands,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to register commands: %w", err)
+	}
 
-	for _, cmd := range b.commands {
-		registered, err := b.session.ApplicationCommandCreate(
-			b.session.State.User.ID,
-			b.config.ServerID,
-			cmd,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create command '%s': %w", cmd.Name, err)
-		}
-		registeredCommands = append(registeredCommands, registered)
+	for _, cmd := range registeredCommands {
 		b.logger.Printf("Registered command: %s", cmd.Name)
 	}
 

@@ -5,6 +5,12 @@ import (
 )
 
 // returns all slash commands to register
+//
+// "bug" and "feature" are commented out below. Creating the GitHub issue
+// requires a token with write scope that is not available yet, so submission
+// failed only after the user had filled in the whole modal and lost it.
+// Their handlers stay wired up in the handlers package so the code is ready
+// to re-enable; registration is the only thing switched off.
 func getCommands() []*discordgo.ApplicationCommand {
 	return []*discordgo.ApplicationCommand{
 		{
@@ -24,30 +30,30 @@ func getCommands() []*discordgo.ApplicationCommand {
 				},
 			},
 		},
-		{
-			Name:        "bug",
-			Description: "Submit a bug report",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "title",
-					Description: "A short, descriptive title for the bug report",
-					Required:    true,
-				},
-			},
-		},
-		{
-			Name:        "feature",
-			Description: "Request a new feature",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "title",
-					Description: "A short, descriptive title for the feature request",
-					Required:    true,
-				},
-			},
-		},
+		// {
+		// Name:        "bug",
+		// Description: "Submit a bug report",
+		// Options: []*discordgo.ApplicationCommandOption{
+		// {
+		// Type:        discordgo.ApplicationCommandOptionString,
+		// Name:        "title",
+		// Description: "A short, descriptive title for the bug report",
+		// Required:    true,
+		// },
+		// },
+		// },
+		// {
+		// Name:        "feature",
+		// Description: "Request a new feature",
+		// Options: []*discordgo.ApplicationCommandOption{
+		// {
+		// Type:        discordgo.ApplicationCommandOptionString,
+		// Name:        "title",
+		// Description: "A short, descriptive title for the feature request",
+		// Required:    true,
+		// },
+		// },
+		// },
 		{
 			Name:        "changelog",
 			Description: "View changes between two versions",
