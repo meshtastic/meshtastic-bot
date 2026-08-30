@@ -60,8 +60,6 @@ func HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func handleTapsign(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	helpText := "**How to get help or make a suggestion:**\n" +
-		"`/bug`: To report a bug with the app.\n" +
-		"`/feature`: To request a new feature. \n" +
 		"`/faq`: Frequently Asked Questions.\n" +
 		"`/changelog`: View changes between two versions.\n" +
 		"`/repo`: Get the GitHub URL for a repository.\n"
