@@ -12,7 +12,7 @@ import (
 )
 
 func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, state *ModalState, stateKey string, includeMarkdownNote bool) {
-	body := buildIssueBody(state.SubmittedValues, i.Member.User.Username, i.Member.User.ID)
+	body := buildIssueBody(state.AllFields, state.SubmittedValues, i.Member.User.Username, i.Member.User.ID)
 	issue, err := GithubClient.CreateIssue(state.Owner, state.Repo, state.Title, body, state.Labels)
 	if err != nil {
 		log.Printf("Failed to create GitHub issue: %v", err)
