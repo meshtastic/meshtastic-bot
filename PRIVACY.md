@@ -86,5 +86,4 @@ repository.
 
 ## Contact
 
-Open an issue on
-[meshtastic/meshtastic-bot](https://github.com/meshtastic/meshtastic-bot/issues).
+Email <contact@meshtastic.org>.
