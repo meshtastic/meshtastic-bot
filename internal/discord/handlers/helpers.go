@@ -35,7 +35,7 @@ func continuePrompt(currentPart, totalParts int) string {
 
 	if currentPart+1 >= totalParts {
 		message += "\n\n**The next part is the last one.** Submitting it creates a public " +
-			"GitHub issue showing your Discord username."
+			"GitHub issue showing your Discord username and user ID."
 	}
 
 	return message

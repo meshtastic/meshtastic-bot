@@ -31,7 +31,7 @@ func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	confirmationMessage := fmt.Sprintf("✅ Issue #%d created successfully!\n%s", issue.Number, issue.HTMLURL) +
 		"\n\n**Note:** Screenshots, screen recordings and other attachments cannot be sent from Discord. " +
 		"Open the issue linked above and add them in a comment. Markdown works there too." +
-		"\n\nThis issue is public and records your Discord username. See the " +
+		"\n\nThis issue is public and records your Discord username and user ID. See the " +
 		"[privacy policy](https://github.com/meshtastic/meshtastic-bot/blob/main/PRIVACY.md)."
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
