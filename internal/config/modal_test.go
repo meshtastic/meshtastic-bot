@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -149,6 +150,15 @@ func TestShippedConfigYAML(t *testing.T) {
 		if modal.TemplateURL == nil {
 			t.Errorf("command %q template_url %q did not parse", modal.Command, modal.TemplateURLRaw)
 			continue
+		}
+		// ParseTemplateURL only requires two path components, so it happily
+		// turns "not-github/owner/repo" into owner="not-github". The rebuilt
+		// raw and API URLs still point at GitHub, so a malformed entry does not
+		// send traffic elsewhere, but it would silently target the wrong
+		// repository. Require the shipped entries to name github.com outright.
+		if !strings.HasPrefix(modal.TemplateURLRaw, "https://github.com/") {
+			t.Errorf("command %q template_url %q must start with https://github.com/",
+				modal.Command, modal.TemplateURLRaw)
 		}
 		if modal.TemplateURL.Owner() == "" || modal.TemplateURL.Repo() == "" {
 			t.Errorf("command %q template_url %q yielded owner=%q repo=%q",
