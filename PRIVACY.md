@@ -65,10 +65,8 @@ No other service receives your information.
 ## Removing what you submitted
 
 Because the bot keeps no database, removal means removing the GitHub issue or
-comment. Open an issue on
-[meshtastic/meshtastic-bot](https://github.com/meshtastic/meshtastic-bot/issues)
-or ask a maintainer in the Meshtastic Discord server, naming the issue you want
-removed. Maintainers can delete or edit it.
+comment. Ask a maintainer in the Meshtastic Discord server, naming the issue you
+want removed. Maintainers can delete or edit it.
 
 Deletion removes the issue from GitHub. It cannot recall copies already made by
 search engines, mirrors, or anyone who read it while it was public.
