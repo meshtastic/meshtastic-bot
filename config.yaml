@@ -13,7 +13,11 @@ config:
     template_url: https://github.com/meshtastic/Meshtastic-Android/blob/main/.github/ISSUE_TEMPLATE/bug_report.yml
     channel_id:
       - "871539863307055134"
+    exclude_fields:
+      - screen-media
   - command: feature
     template_url: https://github.com/meshtastic/Meshtastic-Android/blob/main/.github/ISSUE_TEMPLATE/feature_request.yml
     channel_id:
       - "871539863307055134"
+    exclude_fields:
+      - screenshots
