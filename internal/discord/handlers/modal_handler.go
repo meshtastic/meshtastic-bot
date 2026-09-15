@@ -72,32 +72,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	state, hasState := lookupModalState(stateKey)
 
 	if hasState {
-		// This is the first part of a multi-part modal
-		// Extract and store the submitted values
-		for _, component := range data.Components {
-			if actionRow, ok := component.(*discordgo.ActionsRow); ok {
-				for _, comp := range actionRow.Components {
-					if textInput, ok := comp.(*discordgo.TextInput); ok {
-						// The notice is not a template field. Collecting it
-						// would add a section to the issue body and count as a
-						// answered field, throwing off which part comes next.
-						if textInput.CustomID == config.NoticeFieldID {
-							continue
-						}
-
-						// Find the field label from the original fields
-						fieldLabel := textInput.CustomID
-						for _, field := range state.AllFields {
-							if field.CustomID == textInput.CustomID {
-								fieldLabel = field.Label
-								break
-							}
-						}
-						state.SubmittedValues[fieldLabel] = textInput.Value
-					}
-				}
-			}
-		}
+		collectSubmittedValues(state, data.Components)
 
 		currentIndex := len(state.SubmittedValues)
 
@@ -170,27 +145,7 @@ func handleModalContinuation(s *discordgo.Session, i *discordgo.InteractionCreat
 
 	// Extract submitted values
 	data := i.ModalSubmitData()
-	for _, component := range data.Components {
-		if actionRow, ok := component.(*discordgo.ActionsRow); ok {
-			for _, comp := range actionRow.Components {
-				if textInput, ok := comp.(*discordgo.TextInput); ok {
-					customID := textInput.CustomID
-					value := textInput.Value
-
-					// Find the field label from the original fields
-					fieldLabel := customID // default to customID
-					for _, field := range state.AllFields {
-						if field.CustomID == customID {
-							fieldLabel = field.Label
-							break
-						}
-					}
-
-					state.SubmittedValues[fieldLabel] = value
-				}
-			}
-		}
-	}
+	collectSubmittedValues(state, data.Components)
 
 	currentIndex := len(state.SubmittedValues)
 

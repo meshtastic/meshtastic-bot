@@ -23,6 +23,45 @@ func commandTitleOption(i *discordgo.InteractionCreate) string {
 	return ""
 }
 
+// collectSubmittedValues stores one dialog's answers against their field
+// labels.
+//
+// Both the first dialog and every continuation land here. They used to collect
+// values separately, which is how the notice came to be skipped on one path and
+// not the other: it would have been stored as an answered field, adding an
+// empty section to the issue body and throwing off which part comes next.
+func collectSubmittedValues(state *ModalState, components []discordgo.MessageComponent) {
+	for _, component := range components {
+		actionRow, ok := component.(*discordgo.ActionsRow)
+		if !ok {
+			continue
+		}
+
+		for _, comp := range actionRow.Components {
+			textInput, ok := comp.(*discordgo.TextInput)
+			if !ok {
+				continue
+			}
+
+			// The notice is not a template field.
+			if textInput.CustomID == config.NoticeFieldID {
+				continue
+			}
+
+			// Values are keyed by label, which is what the issue body prints.
+			label := textInput.CustomID
+			for _, field := range state.AllFields {
+				if field.CustomID == textInput.CustomID {
+					label = field.Label
+					break
+				}
+			}
+
+			state.SubmittedValues[label] = textInput.Value
+		}
+	}
+}
+
 // continuePrompt is the message shown between parts of a multi-part submission.
 //
 // The warning lands on the step before the final dialog, where pressing
