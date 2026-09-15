@@ -5,6 +5,8 @@ import (
 	"log"
 	"strings"
 
+	"github.com/meshtastic/meshtastic-bot/internal/config"
+
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -32,7 +34,7 @@ func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		"\n\n**Note:** Screenshots, screen recordings and other attachments cannot be sent from Discord. " +
 		"Open the issue linked above and add them in a comment. Markdown works there too." +
 		"\n\nThis issue is public and records your Discord username and user ID. See the " +
-		"[privacy policy](https://github.com/meshtastic/meshtastic-bot/blob/main/PRIVACY.md)."
+		"[privacy policy](<https://github.com/meshtastic/meshtastic-bot/blob/main/PRIVACY.md>)."
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -76,6 +78,13 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			if actionRow, ok := component.(*discordgo.ActionsRow); ok {
 				for _, comp := range actionRow.Components {
 					if textInput, ok := comp.(*discordgo.TextInput); ok {
+						// The notice is not a template field. Collecting it
+						// would add a section to the issue body and count as a
+						// answered field, throwing off which part comes next.
+						if textInput.CustomID == config.NoticeFieldID {
+							continue
+						}
+
 						// Find the field label from the original fields
 						fieldLabel := textInput.CustomID
 						for _, field := range state.AllFields {
@@ -266,6 +275,11 @@ func handleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
 					},
 				},
 			})
+		}
+
+		// Warn on the dialog the reporter submits from, if it has room.
+		if endIndex == len(state.AllFields) && len(components) < 5 {
+			components = append(components, config.NoticeComponent())
 		}
 
 		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 func TestGetOwnerAndRepo(t *testing.T) {
@@ -169,5 +171,41 @@ func TestShippedConfigYAML(t *testing.T) {
 				t.Errorf("command %q has an empty exclude_fields entry", modal.Command)
 			}
 		}
+	}
+}
+
+// The notice is a real Discord component, so it has to satisfy Discord's limits
+// or the whole dialog fails to open. It must also stay optional and keep its
+// sentinel ID, which is what submission uses to skip it.
+func TestNoticeComponent(t *testing.T) {
+	row := NoticeComponent()
+
+	if len(row.Components) != 1 {
+		t.Fatalf("NoticeComponent() has %d components, want 1", len(row.Components))
+	}
+
+	input, ok := row.Components[0].(discordgo.TextInput)
+	if !ok {
+		t.Fatalf("NoticeComponent() component is %T, want discordgo.TextInput", row.Components[0])
+	}
+
+	if input.CustomID != NoticeFieldID {
+		t.Errorf("CustomID = %q, want %q", input.CustomID, NoticeFieldID)
+	}
+	if input.Required {
+		t.Error("the notice must not be required, or a reporter cannot submit without filling it in")
+	}
+	if input.Label == "" {
+		t.Error("the notice must carry a label; that is the text the reporter reads")
+	}
+	if n := len([]rune(input.Label)); n > 45 {
+		t.Errorf("label is %d runes, over Discord's limit of 45: %q", n, input.Label)
+	}
+	if n := len([]rune(input.Placeholder)); n > 100 {
+		t.Errorf("placeholder is %d runes, over Discord's limit of 100: %q", n, input.Placeholder)
+	}
+	if !strings.Contains(strings.ToLower(input.Label+" "+input.Placeholder), "public") {
+		t.Errorf("the notice must say the issue is public, got label %q placeholder %q",
+			input.Label, input.Placeholder)
 	}
 }

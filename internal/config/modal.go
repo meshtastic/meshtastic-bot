@@ -304,6 +304,29 @@ func GetAllFieldsForModal(command, channelID string) ([]FieldConfig, string, str
 	return fields, title, owner, repo, nil
 }
 
+// NoticeFieldID marks the notice appended to the final dialog.
+//
+// A Discord dialog carries nothing but input fields, so a warning has to be a
+// field of its own. This one is never a template field: submission skips it, so
+// it reaches neither the issue body nor the count of collected values.
+const NoticeFieldID = "__public_issue_notice"
+
+// NoticeComponent returns the notice shown at the end of the final dialog,
+// where the reporter is about to submit.
+func NoticeComponent() discordgo.ActionsRow {
+	return discordgo.ActionsRow{
+		Components: []discordgo.MessageComponent{
+			discordgo.TextInput{
+				CustomID:    NoticeFieldID,
+				Label:       "This creates a public GitHub issue",
+				Style:       discordgo.TextInputShort,
+				Placeholder: "It shows your Discord username and user ID. Leave this blank.",
+				Required:    false,
+			},
+		},
+	}
+}
+
 // GetModel returns the modal data for a specific command and channel
 func GetModel(command, channelID string) (*discordgo.InteractionResponseData, error) {
 	if loadedModals == nil {
@@ -362,7 +385,8 @@ func GetModel(command, channelID string) (*discordgo.InteractionResponseData, er
 	// Discord modals can only have 5 components max
 	// If there are more, we'll need multi-part modals (handled by the caller)
 	maxFields := 5
-	if len(fields) > maxFields {
+	moreToCome := len(fields) > maxFields
+	if moreToCome {
 		fields = fields[:maxFields]
 	}
 
@@ -392,6 +416,12 @@ func GetModel(command, channelID string) (*discordgo.InteractionResponseData, er
 		components = append(components, discordgo.ActionsRow{
 			Components: []discordgo.MessageComponent{textInput},
 		})
+	}
+
+	// Warn on the dialog the reporter submits from. When more fields follow,
+	// this is not that dialog, and a full one has no room to spare.
+	if !moreToCome && len(components) < maxFields {
+		components = append(components, NoticeComponent())
 	}
 
 	return &discordgo.InteractionResponseData{
