@@ -32,12 +32,12 @@ func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Record state for every submission, not only multi-part ones. The state
-	// carries the title through to issue creation and collects the submitted
-	// values that build the issue body; without it a single-modal template
-	// (five fields or fewer) falls through to the legacy path, which looks up
-	// field names no GitHub template defines and so sends an empty title.
+	// carries the title through to issue creation and collects the values that
+	// build the issue body, and modal submission treats a missing entry as an
+	// expired session, so a template that fits in a single modal (five fields
+	// or fewer) depends on this too.
 	stateKey := fmt.Sprintf("%s_%s_%s", "bug", i.ChannelID, i.Member.User.ID)
-	modalStates[stateKey] = &ModalState{
+	putModalState(stateKey, &ModalState{
 		Title:           issueTitle,
 		AllFields:       allFields,
 		SubmittedValues: make(map[string]string),
@@ -46,7 +46,7 @@ func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		ChannelID:       i.ChannelID,
 		Owner:           owner,
 		Repo:            repo,
-	}
+	})
 
 	modalData, err := config.GetModel("bug", i.ChannelID)
 	if err != nil {

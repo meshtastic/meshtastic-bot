@@ -5,9 +5,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/meshtastic/meshtastic-bot/internal/config"
-	github "github.com/meshtastic/meshtastic-bot/internal/github"
-
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -23,7 +20,7 @@ func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, 
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
-		delete(modalStates, stateKey)
+		dropModalState(stateKey)
 		return
 	}
 
@@ -41,7 +38,7 @@ func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		},
 	})
 
-	delete(modalStates, stateKey)
+	dropModalState(stateKey)
 }
 
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -66,9 +63,9 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Check if this is a multi-part modal
 	stateKey := fmt.Sprintf("%s_%s_%s", command, channelID, i.Member.User.ID)
-	state, isMultiPart := modalStates[stateKey]
+	state, hasState := lookupModalState(stateKey)
 
-	if isMultiPart {
+	if hasState {
 		// This is the first part of a multi-part modal
 		// Extract and store the submitted values
 		for _, component := range data.Components {
@@ -127,74 +124,18 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Simple modal (5 or fewer fields)
-	// Get owner and repo from modal config
-	_, configTitle, owner, repo, err := config.GetAllFieldsForModal(command, channelID)
-	if err != nil {
-		log.Printf("Error getting modal config: %v", err)
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "❌ Failed to create issue. Configuration error.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-
-	// Extract field values
-	fields := extractModalFields(data.Components)
-
-	// Get user info
-	username := i.Member.User.Username
-	userID := i.Member.User.ID
-
-	// Determine labels based on command
-	labels := []string{"from-discord"}
-	switch command {
-	case "bug":
-		labels = append(labels, "bug")
-	case "feature":
-		labels = append(labels, "enhancement")
-	}
-
-	// Create GitHub issue
-	title := fields["bug_title"]
-	if title == "" {
-		title = fields["feature_title"]
-	}
-	if title == "" {
-		// Modal state lives in memory, so a restart between opening the modal
-		// and submitting it drops the title. Use the template name rather than
-		// sending GitHub an empty title, which it rejects with a 422 after the
-		// reporter has already filled the form in.
-		title = configTitle
-	}
-
-	description := fields["bug_description"]
-	if description == "" {
-		description = fields["feature_description"]
-	}
-
-	body := github.FormatIssueBody(username, userID, description)
-
-	issue, err := GithubClient.CreateIssue(owner, repo, title, body, labels)
-	if err != nil {
-		log.Printf("Failed to create GitHub issue: %v", err)
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "❌ Failed to create issue. Please try again later.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
-
+	// No state means the submission was lost: the bot restarted, or the modal
+	// sat open across a redeploy. /bug and /feature both record state when they
+	// open the modal, so this is never a normal single-modal submission.
+	//
+	// Filing an issue from whatever this one modal happens to hold would create
+	// a partial report and silently drop every field that was never collected,
+	// so ask for a fresh submission instead.
+	log.Printf("No modal state for %s; asking for resubmission", stateKey)
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf("✅ Issue #%d created successfully!\n%s", issue.Number, issue.HTMLURL),
+			Content: "This submission expired before it could be filed, so no issue was created. Please run the command again.",
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
@@ -202,7 +143,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 // handleModalContinuation processes multi-part modal submissions
 func handleModalContinuation(s *discordgo.Session, i *discordgo.InteractionCreate, stateKey string) {
-	state, exists := modalStates[stateKey]
+	state, exists := lookupModalState(stateKey)
 	if !exists {
 		log.Printf("Modal state not found for key: %s", stateKey)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -283,7 +224,7 @@ func handleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Check if this is a continue button
 	if strings.HasPrefix(customID, "continue_") {
 		stateKey := strings.TrimPrefix(customID, "continue_")
-		state, exists := modalStates[stateKey]
+		state, exists := lookupModalState(stateKey)
 		if !exists {
 			log.Printf("Modal state not found for key: %s", stateKey)
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
