@@ -395,3 +395,52 @@ func TestContinuePrompt(t *testing.T) {
 		})
 	}
 }
+
+// The notice must never be collected. It is not a template field, so storing it
+// would add an empty section to the issue body and count as an answered field,
+// changing which part comes next. Both the first dialog and every continuation
+// go through this collector, which is what keeps the two paths in agreement.
+func TestCollectSubmittedValuesSkipsNotice(t *testing.T) {
+	row := func(customID, value string) discordgo.MessageComponent {
+		return &discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				// discordgo delivers submitted inputs as pointers.
+				&discordgo.TextInput{CustomID: customID, Value: value},
+			},
+		}
+	}
+
+	state := &ModalState{
+		AllFields: []config.FieldConfig{
+			{CustomID: "steps", Label: "Steps to reproduce"},
+			{CustomID: "logs", Label: "Logs"},
+		},
+		SubmittedValues: make(map[string]string),
+	}
+
+	collectSubmittedValues(state, []discordgo.MessageComponent{
+		row("steps", "1. flash\n2. wait"),
+		row(config.NoticeFieldID, ""),
+		row("logs", "none"),
+	})
+
+	if _, present := state.SubmittedValues[config.NoticeFieldID]; present {
+		t.Error("the notice was collected under its custom ID")
+	}
+	for label := range state.SubmittedValues {
+		if strings.Contains(strings.ToLower(label), "public github issue") {
+			t.Errorf("the notice was collected under its label %q", label)
+		}
+	}
+
+	if got := len(state.SubmittedValues); got != 2 {
+		t.Errorf("collected %d values, want 2 — an extra entry shifts which part comes next: %v",
+			got, state.SubmittedValues)
+	}
+	if got := state.SubmittedValues["Steps to reproduce"]; got != "1. flash\n2. wait" {
+		t.Errorf("Steps to reproduce = %q, want the submitted value", got)
+	}
+	if got := state.SubmittedValues["Logs"]; got != "none" {
+		t.Errorf("Logs = %q, want %q", got, "none")
+	}
+}
