@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -111,5 +112,62 @@ func TestGetOwnerAndRepo_NoModalsLoaded(t *testing.T) {
 
 	if repo != "" {
 		t.Errorf("GetOwnerAndRepo() with no modals loaded, repo = %q, want empty string", repo)
+	}
+}
+
+// TestShippedConfigYAML guards the config.yaml that actually ships with the
+// bot. A typo there is not a compile error and no other test reads the real
+// file, so a malformed entry would only surface as a command going dead in
+// Discord. LoadModals does no network I/O, so this stays offline.
+func TestShippedConfigYAML(t *testing.T) {
+	const path = "../../config.yaml"
+
+	if err := LoadModals(path); err != nil {
+		t.Fatalf("LoadModals(%s) = %v, want nil", path, err)
+	}
+	if loadedModals == nil || len(loadedModals.Modals) == 0 {
+		t.Fatal("LoadModals parsed no modal entries")
+	}
+
+	for _, modal := range loadedModals.Modals {
+		if modal.Command == "" {
+			t.Error("modal entry has an empty command")
+		}
+		if len(modal.ChannelIDs) == 0 {
+			t.Errorf("command %q has no channel_id", modal.Command)
+		}
+		for _, id := range modal.ChannelIDs {
+			if id == "" {
+				t.Errorf("command %q has an empty channel_id", modal.Command)
+			}
+		}
+		// Every shipped entry is template-driven; a missing or unparsable URL
+		// would leave the command with no fields to show.
+		if modal.TemplateURLRaw == "" {
+			t.Errorf("command %q has no template_url", modal.Command)
+			continue
+		}
+		if modal.TemplateURL == nil {
+			t.Errorf("command %q template_url %q did not parse", modal.Command, modal.TemplateURLRaw)
+			continue
+		}
+		// ParseTemplateURL only requires two path components, so it happily
+		// turns "not-github/owner/repo" into owner="not-github". The rebuilt
+		// raw and API URLs still point at GitHub, so a malformed entry does not
+		// send traffic elsewhere, but it would silently target the wrong
+		// repository. Require the shipped entries to name github.com outright.
+		if !strings.HasPrefix(modal.TemplateURLRaw, "https://github.com/") {
+			t.Errorf("command %q template_url %q must start with https://github.com/",
+				modal.Command, modal.TemplateURLRaw)
+		}
+		if modal.TemplateURL.Owner() == "" || modal.TemplateURL.Repo() == "" {
+			t.Errorf("command %q template_url %q yielded owner=%q repo=%q",
+				modal.Command, modal.TemplateURLRaw, modal.TemplateURL.Owner(), modal.TemplateURL.Repo())
+		}
+		for _, excluded := range modal.ExcludeFields {
+			if excluded == "" {
+				t.Errorf("command %q has an empty exclude_fields entry", modal.Command)
+			}
+		}
 	}
 }

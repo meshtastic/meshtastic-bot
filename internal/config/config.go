@@ -50,9 +50,21 @@ func ParseTemplateURL(templateURL string) (*TemplateURL, error) {
 
 	url := strings.TrimPrefix(templateURL, "https://")
 	url = strings.TrimPrefix(url, "http://")
-	url = strings.TrimPrefix(url, "github.com/")
 
-	parts := strings.Split(url, "/")
+	// Require the URL to name github.com. RawURL and IssueAPIURL below always
+	// rebuild against raw.githubusercontent.com and api.github.com, so another
+	// host is never actually contacted; it would instead be taken as the owner,
+	// silently pointing the template fetch and issue creation at a different
+	// GitHub repository.
+	host, rest, found := strings.Cut(url, "/")
+	if !found {
+		return nil, fmt.Errorf("invalid GitHub URL format: %s", templateURL)
+	}
+	if host != "github.com" {
+		return nil, fmt.Errorf("template URL must be on github.com: %s", templateURL)
+	}
+
+	parts := strings.Split(rest, "/")
 	if len(parts) < 2 {
 		return nil, fmt.Errorf("invalid GitHub URL format: %s", templateURL)
 	}

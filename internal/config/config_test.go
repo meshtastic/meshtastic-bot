@@ -42,6 +42,21 @@ func TestParseTemplateURL(t *testing.T) {
 			wantErr:     false,
 		},
 		{
+			name:        "non-github host rejected",
+			templateURL: "https://not-github.example/owner/repo/blob/main/t.yml",
+			wantErr:     true,
+		},
+		{
+			name:        "lookalike host rejected",
+			templateURL: "https://github.com.evil.example/owner/repo/blob/main/t.yml",
+			wantErr:     true,
+		},
+		{
+			name:        "bare owner/repo without host rejected",
+			templateURL: "meshtastic/web/blob/main/t.yml",
+			wantErr:     true,
+		},
+		{
 			name:        "empty URL",
 			templateURL: "",
 			wantErr:     true,
