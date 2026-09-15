@@ -2,17 +2,56 @@ package handlers
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/meshtastic/meshtastic-bot/internal/config"
 
 	"github.com/bwmarrin/discordgo"
 )
 
-// buildIssueBody constructs the issue body from submitted values
-func buildIssueBody(submittedValues map[string]string, username, userID string) string {
+// commandTitleOption returns the value of the "title" slash-command option.
+//
+// The GitHub issue templates the modals are built from define no title field,
+// so /bug and /feature collect the issue title as a command option instead.
+func commandTitleOption(i *discordgo.InteractionCreate) string {
+	for _, opt := range i.ApplicationCommandData().Options {
+		if opt.Name == "title" {
+			return strings.TrimSpace(opt.StringValue())
+		}
+	}
+	return ""
+}
+
+// buildIssueBody constructs the issue body from submitted values.
+//
+// Sections follow the order of the issue template's fields. Ranging over the
+// map alone would emit them in Go's randomised map order, so the same report
+// would be laid out differently every time it was filed.
+func buildIssueBody(allFields []config.FieldConfig, submittedValues map[string]string, username, userID string) string {
 	var body strings.Builder
 
-	for label, value := range submittedValues {
-		body.WriteString(fmt.Sprintf("### %s\n%s\n\n", label, value))
+	written := make(map[string]bool, len(submittedValues))
+	for _, field := range allFields {
+		value, ok := submittedValues[field.Label]
+		if !ok || written[field.Label] {
+			continue
+		}
+		written[field.Label] = true
+		body.WriteString(fmt.Sprintf("### %s\n%s\n\n", field.Label, value))
+	}
+
+	// A submitted value that matches no template field still belongs in the
+	// issue; emit those in a stable order rather than dropping them.
+	leftover := make([]string, 0, len(submittedValues))
+	for label := range submittedValues {
+		if !written[label] {
+			leftover = append(leftover, label)
+		}
+	}
+	sort.Strings(leftover)
+	for _, label := range leftover {
+		body.WriteString(fmt.Sprintf("### %s\n%s\n\n", label, submittedValues[label]))
 	}
 
 	body.WriteString(fmt.Sprintf("\n---\nSubmitted via Discord by: %s (%s)", username, userID))

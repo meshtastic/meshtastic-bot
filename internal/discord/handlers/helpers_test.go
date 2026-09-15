@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/meshtastic/meshtastic-bot/internal/config"
+
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -54,15 +56,25 @@ func TestTruncatePlaceholder(t *testing.T) {
 }
 
 func TestBuildIssueBody(t *testing.T) {
+	fields := func(labels ...string) []config.FieldConfig {
+		out := make([]config.FieldConfig, 0, len(labels))
+		for _, l := range labels {
+			out = append(out, config.FieldConfig{Label: l})
+		}
+		return out
+	}
+
 	tests := []struct {
 		name            string
+		allFields       []config.FieldConfig
 		submittedValues map[string]string
 		username        string
 		userID          string
 		wantContains    []string
 	}{
 		{
-			name: "single field",
+			name:      "single field",
+			allFields: fields("Description"),
 			submittedValues: map[string]string{
 				"Description": "This is a bug",
 			},
@@ -75,7 +87,8 @@ func TestBuildIssueBody(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple fields",
+			name:      "multiple fields",
+			allFields: fields("Title", "Description", "Steps"),
 			submittedValues: map[string]string{
 				"Title":       "Bug Title",
 				"Description": "Bug description",
@@ -95,6 +108,7 @@ func TestBuildIssueBody(t *testing.T) {
 		},
 		{
 			name:            "empty values",
+			allFields:       nil,
 			submittedValues: map[string]string{},
 			username:        "emptyuser",
 			userID:          "000",
@@ -102,11 +116,27 @@ func TestBuildIssueBody(t *testing.T) {
 				"Submitted via Discord by: emptyuser (000)",
 			},
 		},
+		{
+			name:      "value with no matching field is still included",
+			allFields: fields("Known"),
+			submittedValues: map[string]string{
+				"Known":  "in template",
+				"Orphan": "not in template",
+			},
+			username: "someone",
+			userID:   "555",
+			wantContains: []string{
+				"### Known",
+				"in template",
+				"### Orphan",
+				"not in template",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := buildIssueBody(tt.submittedValues, tt.username, tt.userID)
+			result := buildIssueBody(tt.allFields, tt.submittedValues, tt.username, tt.userID)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(result, want) {
@@ -114,6 +144,57 @@ func TestBuildIssueBody(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Map iteration order in Go is randomised, so a body built by ranging over the
+// submitted values alone would vary between identical submissions. Build the
+// same report repeatedly and require byte-identical output in template order.
+func TestBuildIssueBodyOrderIsDeterministic(t *testing.T) {
+	allFields := []config.FieldConfig{
+		{Label: "Prerequisites"},
+		{Label: "Hardware"},
+		{Label: "Expected behavior"},
+		{Label: "Actual behavior"},
+		{Label: "Steps to reproduce"},
+		{Label: "Logs"},
+	}
+	submitted := map[string]string{
+		"Prerequisites":      "checked",
+		"Hardware":           "RAK4631",
+		"Expected behavior":  "it works",
+		"Actual behavior":    "it does not",
+		"Steps to reproduce": "1. flash\n2. wait",
+		"Logs":               "none",
+	}
+
+	first := buildIssueBody(allFields, submitted, "user", "1")
+
+	for i := 0; i < 50; i++ {
+		if got := buildIssueBody(allFields, submitted, "user", "1"); got != first {
+			t.Fatalf("buildIssueBody() output varied between calls:\nfirst: %q\ngot:   %q", first, got)
+		}
+	}
+
+	// Sections must follow template order, not map order.
+	wantOrder := []string{
+		"### Prerequisites",
+		"### Hardware",
+		"### Expected behavior",
+		"### Actual behavior",
+		"### Steps to reproduce",
+		"### Logs",
+	}
+	pos := -1
+	for _, heading := range wantOrder {
+		idx := strings.Index(first, heading)
+		if idx == -1 {
+			t.Fatalf("buildIssueBody() missing heading %q", heading)
+		}
+		if idx <= pos {
+			t.Errorf("buildIssueBody() heading %q out of template order", heading)
+		}
+		pos = idx
 	}
 }
 
@@ -206,6 +287,72 @@ func TestExtractModalFields(t *testing.T) {
 				} else if actualValue != expectedValue {
 					t.Errorf("extractModalFields()[%q] = %q, want %q", key, actualValue, expectedValue)
 				}
+			}
+		})
+	}
+}
+
+func TestCommandTitleOption(t *testing.T) {
+	interaction := func(opts []*discordgo.ApplicationCommandInteractionDataOption) *discordgo.InteractionCreate {
+		return &discordgo.InteractionCreate{
+			Interaction: &discordgo.Interaction{
+				Type: discordgo.InteractionApplicationCommand,
+				Data: discordgo.ApplicationCommandInteractionData{
+					Name:    "bug",
+					Options: opts,
+				},
+			},
+		}
+	}
+	opt := func(name, value string) *discordgo.ApplicationCommandInteractionDataOption {
+		return &discordgo.ApplicationCommandInteractionDataOption{
+			Name:  name,
+			Type:  discordgo.ApplicationCommandOptionString,
+			Value: value,
+		}
+	}
+
+	tests := []struct {
+		name     string
+		options  []*discordgo.ApplicationCommandInteractionDataOption
+		expected string
+	}{
+		{
+			name:     "title option returned",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("title", "Map tiles fail to load")},
+			expected: "Map tiles fail to load",
+		},
+		{
+			name:     "surrounding whitespace trimmed",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("title", "  Padded title  ")},
+			expected: "Padded title",
+		},
+		{
+			name:     "title found among other options",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("other", "ignored"), opt("title", "Real title")},
+			expected: "Real title",
+		},
+		{
+			name:     "no options yields empty string",
+			options:  nil,
+			expected: "",
+		},
+		{
+			name:     "missing title option yields empty string",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("other", "ignored")},
+			expected: "",
+		},
+		{
+			name:     "whitespace-only title yields empty string",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("title", "   ")},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := commandTitleOption(interaction(tt.options)); got != tt.expected {
+				t.Errorf("commandTitleOption() = %q, want %q", got, tt.expected)
 			}
 		})
 	}

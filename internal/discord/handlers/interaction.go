@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"sync"
+
 	config "github.com/meshtastic/meshtastic-bot/internal/config"
 	github "github.com/meshtastic/meshtastic-bot/internal/github"
 
@@ -31,7 +33,35 @@ type ModalState struct {
 	Repo            string
 }
 
-var modalStates = make(map[string]*ModalState)
+// modalStates is keyed by command, channel and user.
+//
+// discordgo dispatches each interaction in its own goroutine, so these entries
+// are written and read concurrently; an unguarded map panics the process with
+// "concurrent map read and map write". Go through putModalState,
+// lookupModalState and dropModalState rather than touching the map directly.
+var (
+	modalStatesMu sync.Mutex
+	modalStates   = make(map[string]*ModalState)
+)
+
+func putModalState(key string, state *ModalState) {
+	modalStatesMu.Lock()
+	defer modalStatesMu.Unlock()
+	modalStates[key] = state
+}
+
+func lookupModalState(key string) (*ModalState, bool) {
+	modalStatesMu.Lock()
+	defer modalStatesMu.Unlock()
+	state, ok := modalStates[key]
+	return state, ok
+}
+
+func dropModalState(key string) {
+	modalStatesMu.Lock()
+	defer modalStatesMu.Unlock()
+	delete(modalStates, key)
+}
 
 var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate){
 	"tapsign":   handleTapsign,
@@ -61,6 +91,8 @@ func HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleTapsign(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	helpText := "**How to get help or make a suggestion:**\n" +
 		"`/faq`: Frequently Asked Questions.\n" +
+		"`/bug`: Report a bug.\n" +
+		"`/feature`: Request a new feature.\n" +
 		"`/changelog`: View changes between two versions.\n" +
 		"`/repo`: Get the GitHub URL for a repository.\n"
 
