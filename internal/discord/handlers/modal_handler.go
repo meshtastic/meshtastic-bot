@@ -8,7 +8,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, state *ModalState, stateKey string, includeMarkdownNote bool) {
+func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, state *ModalState, stateKey string) {
 	body := buildIssueBody(state.AllFields, state.SubmittedValues, i.Member.User.Username, i.Member.User.ID)
 	issue, err := GithubClient.CreateIssue(state.Owner, state.Repo, state.Title, body, state.Labels)
 	if err != nil {
@@ -24,11 +24,13 @@ func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		return
 	}
 
-	confirmationMessage := fmt.Sprintf("✅ Issue #%d created successfully!\n%s", issue.Number, issue.HTMLURL)
-	if includeMarkdownNote {
-		confirmationMessage += "\n\n**Note:** You can use Markdown formatting in your descriptions. " +
-			"To add images or other attachments, please edit the issue directly on GitHub."
-	}
+	// A Discord modal takes text only, so screenshots, recordings and other
+	// attachments cannot be collected here at all. Say so on every issue, and
+	// point at the link just given, rather than leaving the reporter to work out
+	// where their screenshot was meant to go.
+	confirmationMessage := fmt.Sprintf("✅ Issue #%d created successfully!\n%s", issue.Number, issue.HTMLURL) +
+		"\n\n**Note:** Screenshots, screen recordings and other attachments cannot be sent from Discord. " +
+		"Open the issue linked above and add them in a comment. Markdown works there too."
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -120,7 +122,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 
 		// All fields collected - create the GitHub issue
-		createIssueFromState(s, i, state, stateKey, false)
+		createIssueFromState(s, i, state, stateKey)
 		return
 	}
 
@@ -215,7 +217,7 @@ func handleModalContinuation(s *discordgo.Session, i *discordgo.InteractionCreat
 	}
 
 	// All fields collected - create the GitHub issue
-	createIssueFromState(s, i, state, stateKey, true)
+	createIssueFromState(s, i, state, stateKey)
 }
 
 func handleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
