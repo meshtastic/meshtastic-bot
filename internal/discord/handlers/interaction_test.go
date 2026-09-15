@@ -104,3 +104,31 @@ func TestPutModalStatePurgesAbandoned(t *testing.T) {
 		t.Error("the newly recorded submission should be present")
 	}
 }
+
+// dropModalState runs after every successful submission, and is what stops a
+// completed report lingering in memory.
+func TestDropModalState(t *testing.T) {
+	resetModalStates()
+	const key = "bug_channel_user"
+
+	putModalState(key, &ModalState{Command: "bug"})
+	if _, ok := lookupModalState(key); !ok {
+		t.Fatal("a freshly recorded state should be found")
+	}
+
+	dropModalState(key)
+
+	if _, ok := lookupModalState(key); ok {
+		t.Error("a dropped state should not be returned")
+	}
+
+	modalStatesMu.Lock()
+	_, present := modalStates[key]
+	modalStatesMu.Unlock()
+	if present {
+		t.Error("a dropped state should be removed from the map")
+	}
+
+	// Dropping a key that is not present must not panic.
+	dropModalState("feature_never_recorded")
+}
