@@ -50,7 +50,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Format: "modal_<command>_<channelID>" or "modal_continue_<stateKey>"
 	parts := strings.Split(data.CustomID, "_")
 	if len(parts) < 2 {
-		log.Printf("Invalid modal CustomID format: %s", data.CustomID)
+		log.Printf("Invalid modal CustomID format (%d segments)", len(parts))
 		return
 	}
 
@@ -133,7 +133,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Filing an issue from whatever this one modal happens to hold would create
 	// a partial report and silently drop every field that was never collected,
 	// so ask for a fresh submission instead.
-	log.Printf("No modal state for %s; asking for resubmission", stateKey)
+	log.Printf("No modal state for a %s submission; asking for resubmission", command)
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -147,7 +147,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleModalContinuation(s *discordgo.Session, i *discordgo.InteractionCreate, stateKey string) {
 	state, exists := lookupModalState(stateKey)
 	if !exists {
-		log.Printf("Modal state not found for key: %s", stateKey)
+		log.Printf("Modal state not found for a %s submission", commandFromStateKey(stateKey))
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -228,7 +228,7 @@ func handleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		stateKey := strings.TrimPrefix(customID, "continue_")
 		state, exists := lookupModalState(stateKey)
 		if !exists {
-			log.Printf("Modal state not found for key: %s", stateKey)
+			log.Printf("Modal state not found for a %s submission", commandFromStateKey(stateKey))
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{

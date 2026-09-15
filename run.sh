@@ -50,6 +50,8 @@ echo "Running container in detached mode..."
 $DOCKER_CMD run -d \
     --name $CONTAINER_NAME \
     --env-file "$ENV_FILE" \
+    --log-opt max-size=10m \
+    --log-opt max-file=3 \
     -e CONFIG_PATH=/app/config.yaml \
     -e FAQ_PATH=/app/faq.yaml \
     -p "${HEALTHCHECK_PORT}:8080" \
