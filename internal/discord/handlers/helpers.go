@@ -7,6 +7,19 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+// commandTitleOption returns the value of the "title" slash-command option.
+//
+// The GitHub issue templates the modals are built from define no title field,
+// so /bug and /feature collect the issue title as a command option instead.
+func commandTitleOption(i *discordgo.InteractionCreate) string {
+	for _, opt := range i.ApplicationCommandData().Options {
+		if opt.Name == "title" {
+			return strings.TrimSpace(opt.StringValue())
+		}
+	}
+	return ""
+}
+
 // buildIssueBody constructs the issue body from submitted values
 func buildIssueBody(submittedValues map[string]string, username, userID string) string {
 	var body strings.Builder

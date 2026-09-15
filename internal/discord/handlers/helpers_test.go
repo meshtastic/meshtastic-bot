@@ -210,3 +210,69 @@ func TestExtractModalFields(t *testing.T) {
 		})
 	}
 }
+
+func TestCommandTitleOption(t *testing.T) {
+	interaction := func(opts []*discordgo.ApplicationCommandInteractionDataOption) *discordgo.InteractionCreate {
+		return &discordgo.InteractionCreate{
+			Interaction: &discordgo.Interaction{
+				Type: discordgo.InteractionApplicationCommand,
+				Data: discordgo.ApplicationCommandInteractionData{
+					Name:    "bug",
+					Options: opts,
+				},
+			},
+		}
+	}
+	opt := func(name, value string) *discordgo.ApplicationCommandInteractionDataOption {
+		return &discordgo.ApplicationCommandInteractionDataOption{
+			Name:  name,
+			Type:  discordgo.ApplicationCommandOptionString,
+			Value: value,
+		}
+	}
+
+	tests := []struct {
+		name     string
+		options  []*discordgo.ApplicationCommandInteractionDataOption
+		expected string
+	}{
+		{
+			name:     "title option returned",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("title", "Map tiles fail to load")},
+			expected: "Map tiles fail to load",
+		},
+		{
+			name:     "surrounding whitespace trimmed",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("title", "  Padded title  ")},
+			expected: "Padded title",
+		},
+		{
+			name:     "title found among other options",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("other", "ignored"), opt("title", "Real title")},
+			expected: "Real title",
+		},
+		{
+			name:     "no options yields empty string",
+			options:  nil,
+			expected: "",
+		},
+		{
+			name:     "missing title option yields empty string",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("other", "ignored")},
+			expected: "",
+		},
+		{
+			name:     "whitespace-only title yields empty string",
+			options:  []*discordgo.ApplicationCommandInteractionDataOption{opt("title", "   ")},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := commandTitleOption(interaction(tt.options)); got != tt.expected {
+				t.Errorf("commandTitleOption() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}

@@ -24,19 +24,28 @@ func handleFeature(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// If more than 5 fields, set up multi-part modal state
-	if len(allFields) > 5 {
-		stateKey := fmt.Sprintf("%s_%s_%s", "feature", i.ChannelID, i.Member.User.ID)
-		modalStates[stateKey] = &ModalState{
-			Title:           title,
-			AllFields:       allFields,
-			SubmittedValues: make(map[string]string),
-			Labels:          []string{"from-discord", "enhancement"},
-			Command:         "feature",
-			ChannelID:       i.ChannelID,
-			Owner:           owner,
-			Repo:            repo,
-		}
+	// The template defines no title field, so take the title from the command
+	// option and fall back to the template name if it is somehow absent.
+	issueTitle := commandTitleOption(i)
+	if issueTitle == "" {
+		issueTitle = title
+	}
+
+	// Record state for every submission, not only multi-part ones. The state
+	// carries the title through to issue creation and collects the submitted
+	// values that build the issue body; without it a single-modal template
+	// (five fields or fewer) falls through to the legacy path, which looks up
+	// field names no GitHub template defines and so sends an empty title.
+	stateKey := fmt.Sprintf("%s_%s_%s", "feature", i.ChannelID, i.Member.User.ID)
+	modalStates[stateKey] = &ModalState{
+		Title:           issueTitle,
+		AllFields:       allFields,
+		SubmittedValues: make(map[string]string),
+		Labels:          []string{"from-discord", "enhancement"},
+		Command:         "feature",
+		ChannelID:       i.ChannelID,
+		Owner:           owner,
+		Repo:            repo,
 	}
 
 	modalData, err := config.GetModel("feature", i.ChannelID)

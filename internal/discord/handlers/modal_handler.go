@@ -129,7 +129,7 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Simple modal (5 or fewer fields)
 	// Get owner and repo from modal config
-	_, _, owner, repo, err := config.GetAllFieldsForModal(command, channelID)
+	_, configTitle, owner, repo, err := config.GetAllFieldsForModal(command, channelID)
 	if err != nil {
 		log.Printf("Error getting modal config: %v", err)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -162,6 +162,13 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	title := fields["bug_title"]
 	if title == "" {
 		title = fields["feature_title"]
+	}
+	if title == "" {
+		// Modal state lives in memory, so a restart between opening the modal
+		// and submitting it drops the title. Use the template name rather than
+		// sending GitHub an empty title, which it rejects with a 422 after the
+		// reporter has already filled the form in.
+		title = configTitle
 	}
 
 	description := fields["bug_description"]
