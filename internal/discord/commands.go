@@ -26,7 +26,7 @@ func getCommands() []*discordgo.ApplicationCommand {
 		},
 		{
 			Name:        "bug",
-			Description: "Submit a bug report",
+			Description: "Submit a bug report. Creates a public GitHub issue showing your Discord username.",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
@@ -38,7 +38,7 @@ func getCommands() []*discordgo.ApplicationCommand {
 		},
 		{
 			Name:        "feature",
-			Description: "Request a new feature",
+			Description: "Request a new feature. Creates a public GitHub issue showing your Discord username.",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,

@@ -357,3 +357,41 @@ func TestCommandTitleOption(t *testing.T) {
 		})
 	}
 }
+
+// The warning has to reach the reporter before the final dialog, not after the
+// issue exists, so it belongs on the step whose Continue opens the last part.
+func TestContinuePrompt(t *testing.T) {
+	const warning = "The next part is the last one."
+
+	tests := []struct {
+		name        string
+		currentPart int
+		totalParts  int
+		wantWarning bool
+	}{
+		{name: "first of three does not warn", currentPart: 1, totalParts: 3, wantWarning: false},
+		{name: "second of three warns", currentPart: 2, totalParts: 3, wantWarning: true},
+		{name: "first of two warns", currentPart: 1, totalParts: 2, wantWarning: true},
+		{name: "first of four does not warn", currentPart: 1, totalParts: 4, wantWarning: false},
+		{name: "third of four warns", currentPart: 3, totalParts: 4, wantWarning: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := continuePrompt(tt.currentPart, tt.totalParts)
+
+			if !strings.Contains(got, "Click 'Continue' to proceed.") {
+				t.Errorf("continuePrompt(%d, %d) lost the continue instruction: %q",
+					tt.currentPart, tt.totalParts, got)
+			}
+			if hasWarning := strings.Contains(got, warning); hasWarning != tt.wantWarning {
+				t.Errorf("continuePrompt(%d, %d) warning = %v, want %v\ngot: %q",
+					tt.currentPart, tt.totalParts, hasWarning, tt.wantWarning, got)
+			}
+			if tt.wantWarning && !strings.Contains(got, "public") {
+				t.Errorf("continuePrompt(%d, %d) warns but does not say the issue is public: %q",
+					tt.currentPart, tt.totalParts, got)
+			}
+		})
+	}
+}

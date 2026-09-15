@@ -23,6 +23,24 @@ func commandTitleOption(i *discordgo.InteractionCreate) string {
 	return ""
 }
 
+// continuePrompt is the message shown between parts of a multi-part submission.
+//
+// The warning lands on the step before the final dialog, where pressing
+// Continue opens the last one: that is the reporter's last chance to stop
+// before an issue is created. The dialog itself cannot carry this text,
+// because every component in it is an input field.
+func continuePrompt(currentPart, totalParts int) string {
+	message := fmt.Sprintf("Part %d of %d complete. Click 'Continue' to proceed.",
+		currentPart, totalParts)
+
+	if currentPart+1 >= totalParts {
+		message += "\n\n**The next part is the last one.** Submitting it creates a public " +
+			"GitHub issue showing your Discord username."
+	}
+
+	return message
+}
+
 // buildIssueBody constructs the issue body from submitted values.
 //
 // Sections follow the order of the issue template's fields. Ranging over the
