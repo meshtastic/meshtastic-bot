@@ -444,3 +444,72 @@ func TestCollectSubmittedValuesSkipsNotice(t *testing.T) {
 		t.Errorf("Logs = %q, want %q", got, "none")
 	}
 }
+
+// Discord rejects a dialog title outside 1-45 characters with HTTP 400, which
+// fails the whole dialog and strands what the reporter has already typed. This
+// is the regression seen in production on 2026-09-16.
+func TestDialogTitle(t *testing.T) {
+	long := strings.Repeat("a", 60)
+
+	tests := []struct {
+		name     string
+		state    *ModalState
+		expected string
+	}{
+		{
+			name:     "template name preferred over the reporter's title",
+			state:    &ModalState{DisplayTitle: "Bug Report", Title: "Map tiles fail to load on Android"},
+			expected: "Bug Report",
+		},
+		{
+			name:     "falls back to the reporter's title when no header is set",
+			state:    &ModalState{Title: "Short enough"},
+			expected: "Short enough",
+		},
+		{
+			name:     "an over-long fallback is clamped, not rejected",
+			state:    &ModalState{Title: long},
+			expected: strings.Repeat("a", 45),
+		},
+		{
+			name:     "an over-long header is clamped too",
+			state:    &ModalState{DisplayTitle: long},
+			expected: strings.Repeat("a", 45),
+		},
+		{
+			name:     "empty state still yields a usable title",
+			state:    &ModalState{},
+			expected: "Report",
+		},
+		{
+			name:     "whitespace-only is treated as empty",
+			state:    &ModalState{DisplayTitle: "   ", Title: "  "},
+			expected: "Report",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dialogTitle(tt.state)
+
+			if got != tt.expected {
+				t.Errorf("dialogTitle() = %q, want %q", got, tt.expected)
+			}
+			if n := len([]rune(got)); n < 1 || n > discordDialogTitleLimit {
+				t.Errorf("dialogTitle() = %q, %d runes, outside Discord's 1-%d",
+					got, n, discordDialogTitleLimit)
+			}
+		})
+	}
+}
+
+// Whatever the reporter types, the header must stay within Discord's limit.
+func TestDialogTitleNeverExceedsLimit(t *testing.T) {
+	for _, n := range []int{0, 1, 44, 45, 46, 200, 4000} {
+		state := &ModalState{Title: strings.Repeat("x", n)}
+		got := dialogTitle(state)
+		if r := len([]rune(got)); r < 1 || r > discordDialogTitleLimit {
+			t.Errorf("title of %d chars produced a %d-rune header: %q", n, r, got)
+		}
+	}
+}
