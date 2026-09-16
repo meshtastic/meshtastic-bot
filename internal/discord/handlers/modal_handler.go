@@ -241,7 +241,7 @@ func handleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Type: discordgo.InteractionResponseModal,
 			Data: &discordgo.InteractionResponseData{
 				CustomID:   fmt.Sprintf("modal_continue_%s", stateKey),
-				Title:      state.Title,
+				Title:      dialogTitle(state),
 				Components: components,
 			},
 		})

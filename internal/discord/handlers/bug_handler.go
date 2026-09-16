@@ -39,6 +39,7 @@ func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	stateKey := fmt.Sprintf("%s_%s_%s", "bug", i.ChannelID, i.Member.User.ID)
 	putModalState(stateKey, &ModalState{
 		Title:           issueTitle,
+		DisplayTitle:    title,
 		AllFields:       allFields,
 		SubmittedValues: make(map[string]string),
 		Labels:          []string{"from-discord", "bug"},

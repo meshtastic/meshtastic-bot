@@ -23,6 +23,34 @@ func commandTitleOption(i *discordgo.InteractionCreate) string {
 	return ""
 }
 
+// discordDialogTitleLimit is Discord's maximum length for a dialog title.
+// Exceeding it fails the whole dialog with HTTP 400, stranding whatever the
+// reporter has already typed.
+const discordDialogTitleLimit = 45
+
+// dialogTitle returns a header Discord will accept.
+//
+// The reporter's own title is arbitrary text and belongs to the issue, not to
+// the dialog, so prefer the template name and fall back only far enough to
+// guarantee the one to forty-five characters Discord requires.
+func dialogTitle(state *ModalState) string {
+	title := strings.TrimSpace(state.DisplayTitle)
+	if title == "" {
+		title = strings.TrimSpace(state.Title)
+	}
+
+	if runes := []rune(title); len(runes) > discordDialogTitleLimit {
+		title = strings.TrimSpace(string(runes[:discordDialogTitleLimit]))
+	}
+
+	// Discord rejects an empty title as firmly as an over-long one.
+	if title == "" {
+		title = "Report"
+	}
+
+	return title
+}
+
 // collectSubmittedValues stores one dialog's answers against their field
 // labels.
 //

@@ -25,7 +25,11 @@ func InitializeGithub(token, owner, repo string) {
 
 // ModalState tracks the state of multi-part modals
 type ModalState struct {
-	Title           string
+	// Title is the reporter's text, used for the GitHub issue.
+	Title string
+	// DisplayTitle heads the dialog. Discord limits that to 45 characters and
+	// Title is arbitrary text, so the two cannot share a field.
+	DisplayTitle    string
 	CreatedAt       time.Time
 	AllFields       []config.FieldConfig
 	SubmittedValues map[string]string
