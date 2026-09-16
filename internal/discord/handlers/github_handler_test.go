@@ -365,3 +365,59 @@ func TestHandleRepo_NoOptions(t *testing.T) {
 		t.Errorf("Expected default repo to be used when no options provided, got %q", capturedRepo)
 	}
 }
+
+func TestResolveRepoAlias(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "apple", input: "apple", expected: "Meshtastic-Apple"},
+		{name: "ios", input: "ios", expected: "Meshtastic-Apple"},
+		{name: "iphone", input: "iphone", expected: "Meshtastic-Apple"},
+		{name: "android", input: "android", expected: "Meshtastic-Android"},
+		{name: "uppercase resolves", input: "IOS", expected: "Meshtastic-Apple"},
+		{name: "mixed case resolves", input: "Android", expected: "Meshtastic-Android"},
+		{name: "surrounding whitespace trimmed", input: "  apple  ", expected: "Meshtastic-Apple"},
+		{name: "docs", input: "docs", expected: "meshtastic"},
+		{name: "cli", input: "cli", expected: "python"},
+
+		// Names that already resolve on GitHub must pass through untouched, so
+		// nothing that worked before this table existed stops working.
+		{name: "web passes through", input: "web", expected: "web"},
+		{name: "firmware passes through", input: "firmware", expected: "firmware"},
+		{name: "design passes through", input: "design", expected: "design"},
+		{name: "exact repo name passes through", input: "Meshtastic-Apple", expected: "Meshtastic-Apple"},
+		{name: "unknown name passes through", input: "not-a-repo", expected: "not-a-repo"},
+		{name: "empty stays empty", input: "", expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveRepoAlias(tt.input); got != tt.expected {
+				t.Errorf("resolveRepoAlias(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// An alias pointing at a repository that does not exist would turn a working
+// lookup into a confusing failure, so every target must be spelled the way the
+// organization spells it.
+func TestRepoAliasTargetsAreWellFormed(t *testing.T) {
+	known := map[string]bool{
+		"Meshtastic-Apple":   true,
+		"Meshtastic-Android": true,
+		"meshtastic":         true,
+		"python":             true,
+	}
+
+	for alias, target := range repoAliases {
+		if alias != strings.ToLower(alias) {
+			t.Errorf("alias %q must be lower case, or lookup will never match it", alias)
+		}
+		if !known[target] {
+			t.Errorf("alias %q points at %q, which is not a known repository", alias, target)
+		}
+	}
+}
