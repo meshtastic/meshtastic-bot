@@ -129,13 +129,42 @@ func HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
+// tapsignHelp explains how to use each command, not only what it is called.
+//
+// The command names alone leave the useful parts undiscoverable: that /faq and
+// /changelog offer suggestions, that /changelog wants two versions rather than
+// one, that /repo accepts short names, and that /bug and /feature answer in two
+// channels only and file something public.
+func tapsignHelp() string {
+	var b strings.Builder
+
+	b.WriteString("**How to get help or make a suggestion**\n\n")
+
+	b.WriteString("`/faq` — look up a frequently asked question.\n")
+	b.WriteString("Start typing a topic and pick one from the suggestions.\n\n")
+
+	b.WriteString("`/changelog` — see what changed between two releases.\n")
+	b.WriteString("Takes a base and a head version, both with suggestions, ")
+	b.WriteString("as in `/changelog base:v2.7.1 head:v2.7.2`.\n\n")
+
+	b.WriteString("`/repo` — get the GitHub link for a repository.\n")
+	b.WriteString("Short names work, such as `apple`, `ios`, `android`, `docs` or `cli`. ")
+	b.WriteString("Leave the name out for the default repository.\n\n")
+
+	b.WriteString("`/bug` — report a bug.\n")
+	b.WriteString("`/feature` — request a new feature.\n")
+	b.WriteString("Both open a form. Give a short title, fill the form in, and the bot files ")
+	b.WriteString("a GitHub issue and replies with the link. They answer in the Android app ")
+	b.WriteString("and web client channels only.\n")
+	b.WriteString("The issue is public and records your Discord username and user ID. ")
+	b.WriteString("Screenshots cannot be sent from Discord, so add them in a comment on the ")
+	b.WriteString("issue once it exists.\n")
+
+	return b.String()
+}
+
 func handleTapsign(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	helpText := "**How to get help or make a suggestion:**\n" +
-		"`/faq`: Frequently Asked Questions.\n" +
-		"`/bug`: Report a bug.\n" +
-		"`/feature`: Request a new feature.\n" +
-		"`/changelog`: View changes between two versions.\n" +
-		"`/repo`: Get the GitHub URL for a repository.\n"
+	helpText := tapsignHelp()
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
