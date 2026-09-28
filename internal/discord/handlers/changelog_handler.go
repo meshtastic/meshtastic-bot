@@ -75,13 +75,15 @@ func handleChangelog(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		log.Printf("Error getting changelog: %v", err)
 		errMsg := fmt.Sprintf("Failed to compare versions: %s...%s", base, head)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &errMsg,
+			Content:         &errMsg,
+			AllowedMentions: noMentions,
 		})
 		return
 	}
 
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: &message,
+		Content:         &message,
+		AllowedMentions: noMentions,
 	})
 }
 
@@ -115,7 +117,7 @@ func getChangelogMessage(base, head string) (string, error) {
 		return "", err
 	}
 
-	message := formatChangelogMessage(base, head, comparison)
+	message := formatChangelogMessage(GithubOwner+"/"+GithubRepo, base, head, comparison)
 
 	// Store in cache
 	comparisonCache[cacheKey] = &CachedComparison{
@@ -126,16 +128,26 @@ func getChangelogMessage(base, head string) (string, error) {
 	return message, nil
 }
 
-func formatChangelogMessage(base, head string, comparison *gogithub.CommitsComparison) string {
+// changelogShown is how many of the newest commits a reply lists. The unpaged
+// comparison holds at most 250 commits but always ends with the newest.
+const changelogShown = 10
+
+func formatChangelogMessage(repoName, base, head string, comparison *gogithub.CommitsComparison) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("## Changes from %s to %s\n", base, head))
+	sb.WriteString(fmt.Sprintf("## Changes from %s to %s in %s\n", base, head, repoName))
 	sb.WriteString(fmt.Sprintf("Total commits: %d\n\n", comparison.GetTotalCommits()))
 
 	// List commits (limit to last 10 to avoid hitting message length limits)
 	commits := comparison.Commits
-	if len(commits) > 10 {
-		sb.WriteString(fmt.Sprintf("*Showing last 10 of %d commits*\n\n", len(commits)))
-		commits = commits[len(commits)-10:]
+	total := comparison.GetTotalCommits()
+	if total < len(commits) {
+		total = len(commits)
+	}
+	if len(commits) > changelogShown {
+		commits = commits[len(commits)-changelogShown:]
+	}
+	if total > len(commits) {
+		sb.WriteString(fmt.Sprintf("*Showing last %d of %d commits*\n\n", len(commits), total))
 	}
 
 	for _, commit := range commits {
@@ -191,6 +203,10 @@ func handleChangelogAutocomplete(s *discordgo.Session, i *discordgo.InteractionC
 
 	choices := make([]*discordgo.ApplicationCommandOptionChoice, 0, 25)
 	for _, release := range releaseCache {
+		// A token with push access also lists unpublished drafts.
+		if release.GetDraft() {
+			continue
+		}
 		tagName := release.GetTagName()
 		if currentInput == "" || strings.Contains(strings.ToLower(tagName), currentInput) {
 			choices = append(choices, &discordgo.ApplicationCommandOptionChoice{

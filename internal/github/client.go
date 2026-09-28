@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,10 @@ import (
 const (
 	// RepositoryCacheTTL defines how long repository metadata is cached
 	RepositoryCacheTTL = 4 * time.Hour
+
+	// apiTimeout bounds each call. Handlers hold cache locks across them, so an
+	// unbounded hang would stall every /changelog and /repo behind it.
+	apiTimeout = 10 * time.Second
 )
 
 type Client interface {
@@ -21,6 +26,7 @@ type Client interface {
 	CompareCommits(owner, repo, base, head string) (*github.CommitsComparison, error)
 	CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error)
 	GetRepository(owner, repo string) (*github.Repository, error)
+	FindSubmission(owner, repo, marker string, since time.Time) (*IssueResponse, error)
 }
 
 type CachedRepository struct {
@@ -34,6 +40,63 @@ type LiveGitHubClient struct {
 	ctx       context.Context
 	repoCache map[string]*CachedRepository
 	cacheMux  sync.RWMutex
+
+	loginMu sync.Mutex
+	login   string
+}
+
+// FindSubmission returns the issue this token filed since `since` whose body
+// holds marker, or nil. It reads the issue list rather than search, which
+// lags, so an attempt whose response was lost is found at once.
+func (c *LiveGitHubClient) FindSubmission(owner, repo, marker string, since time.Time) (*IssueResponse, error) {
+	ctx, cancel := context.WithTimeout(c.ctx, apiTimeout)
+	defer cancel()
+	login, err := c.tokenLogin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	opts := &github.IssueListByRepoOptions{
+		Creator: login, State: "all", Since: since, Sort: "created", Direction: "desc",
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+	for range findSubmissionPages {
+		issues, resp, err := c.client.Issues.ListByRepo(ctx, owner, repo, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list recent issues: %w", err)
+		}
+		for _, issue := range issues {
+			if strings.Contains(issue.GetBody(), marker) {
+				return &IssueResponse{Number: issue.GetNumber(), HTMLURL: issue.GetHTMLURL(), ID: issue.GetID()}, nil
+			}
+			// Newest first: everything after this predates the first attempt.
+			if issue.GetCreatedAt().Before(since) {
+				return nil, nil
+			}
+		}
+		if resp.NextPage == 0 {
+			return nil, nil
+		}
+		opts.Page = resp.NextPage
+	}
+	// Not found but not ruled out either; the caller files nothing on error.
+	return nil, fmt.Errorf("more than %d pages of recent issues to check", findSubmissionPages)
+}
+
+// findSubmissionPages bounds FindSubmission's walk through the issue list.
+const findSubmissionPages = 5
+
+func (c *LiveGitHubClient) tokenLogin(ctx context.Context) (string, error) {
+	c.loginMu.Lock()
+	defer c.loginMu.Unlock()
+	if c.login != "" {
+		return c.login, nil
+	}
+	user, _, err := c.client.Users.Get(ctx, "")
+	if err != nil {
+		return "", fmt.Errorf("failed to read the token's user: %w", err)
+	}
+	c.login = user.GetLogin()
+	return c.login, nil
 }
 
 type IssueRequest struct {
@@ -66,7 +129,9 @@ func (c *LiveGitHubClient) GetReleases(owner, repo string, limit int) ([]*github
 	opts := &github.ListOptions{
 		PerPage: limit,
 	}
-	releases, _, err := c.client.Repositories.ListReleases(c.ctx, owner, repo, opts)
+	ctx, cancel := context.WithTimeout(c.ctx, apiTimeout)
+	defer cancel()
+	releases, _, err := c.client.Repositories.ListReleases(ctx, owner, repo, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list releases: %w", err)
 	}
@@ -74,7 +139,9 @@ func (c *LiveGitHubClient) GetReleases(owner, repo string, limit int) ([]*github
 }
 
 func (c *LiveGitHubClient) CompareCommits(owner, repo, base, head string) (*github.CommitsComparison, error) {
-	comparison, resp, err := c.client.Repositories.CompareCommits(c.ctx, owner, repo, base, head, nil)
+	ctx, cancel := context.WithTimeout(c.ctx, apiTimeout)
+	defer cancel()
+	comparison, resp, err := c.client.Repositories.CompareCommits(ctx, owner, repo, base, head, nil)
 	if err != nil {
 		if resp != nil {
 			return nil, fmt.Errorf("github API returned %d: failed to compare commits: %w", resp.StatusCode, err)
@@ -85,9 +152,8 @@ func (c *LiveGitHubClient) CompareCommits(owner, repo, base, head string) (*gith
 }
 
 func (c *LiveGitHubClient) CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error) {
-	log.Printf("[GitHub API] Creating issue in %s/%s", owner, repo)
-	log.Printf("[GitHub API] Title: %s", title)
-	log.Printf("[GitHub API] Labels: %v", labels)
+	// The title is the reporter's own text; it stays out of the host log.
+	log.Printf("[GitHub API] Creating issue in %s/%s with labels %v", owner, repo, labels)
 
 	req := &github.IssueRequest{
 		Title: github.String(title),
@@ -99,7 +165,9 @@ func (c *LiveGitHubClient) CreateIssue(owner, repo, title, body string, labels [
 		req.Labels = &labels
 	}
 
-	issue, resp, err := c.client.Issues.Create(c.ctx, owner, repo, req)
+	ctx, cancel := context.WithTimeout(c.ctx, apiTimeout)
+	defer cancel()
+	issue, resp, err := c.client.Issues.Create(ctx, owner, repo, req)
 	if err != nil {
 		if resp != nil {
 			return nil, fmt.Errorf("github API returned %d: %w", resp.StatusCode, err)
@@ -139,7 +207,9 @@ func (c *LiveGitHubClient) GetRepository(owner, repo string) (*github.Repository
 	}
 
 	// Fetch from GitHub API
-	repository, _, err := c.client.Repositories.Get(c.ctx, owner, repo)
+	ctx, cancel := context.WithTimeout(c.ctx, apiTimeout)
+	defer cancel()
+	repository, _, err := c.client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get repository: %w", err)
 	}

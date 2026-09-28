@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -9,6 +11,20 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 )
+
+// noMentions stops a public reply pinging anyone: they echo user input and
+// commit messages, either of which can hold @everyone.
+var noMentions = &discordgo.MessageAllowedMentions{Parse: []discordgo.AllowedMentionType{}}
+
+// githubMention matches an @user or @org/team mention; a word character or @
+// before it (an email address) is not one.
+var githubMention = regexp.MustCompile(`(^|[^\w@])@([A-Za-z0-9])`)
+
+// defuseMentions keeps the text but stops GitHub notifying anyone, since the
+// issue is authored by an org member whose mentions reach teams.
+func defuseMentions(s string) string {
+	return githubMention.ReplaceAllString(s, "$1@\u200b$2")
+}
 
 // commandTitleOption returns the value of the "title" slash-command option.
 //
@@ -59,6 +75,8 @@ func dialogTitle(state *ModalState) string {
 // not the other: it would have been stored as an answered field, adding an
 // empty section to the issue body and throwing off which part comes next.
 func collectSubmittedValues(state *ModalState, components []discordgo.MessageComponent) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
 	for _, component := range components {
 		actionRow, ok := component.(*discordgo.ActionsRow)
 		if !ok {
@@ -123,7 +141,7 @@ func buildIssueBody(allFields []config.FieldConfig, submittedValues map[string]s
 			continue
 		}
 		written[field.Label] = true
-		body.WriteString(fmt.Sprintf("### %s\n%s\n\n", field.Label, value))
+		body.WriteString(fmt.Sprintf("### %s\n%s\n\n", field.Label, defuseMentions(value)))
 	}
 
 	// A submitted value that matches no template field still belongs in the
@@ -136,7 +154,7 @@ func buildIssueBody(allFields []config.FieldConfig, submittedValues map[string]s
 	}
 	sort.Strings(leftover)
 	for _, label := range leftover {
-		body.WriteString(fmt.Sprintf("### %s\n%s\n\n", label, submittedValues[label]))
+		body.WriteString(fmt.Sprintf("### %s\n%s\n\n", label, defuseMentions(submittedValues[label])))
 	}
 
 	body.WriteString(fmt.Sprintf("\n---\nSubmitted via Discord by: %s (%s)", username, userID))
@@ -167,4 +185,12 @@ func extractModalFields(components []discordgo.MessageComponent) map[string]stri
 	}
 
 	return fields
+}
+
+// formUnavailable tells a reporter why no form opened.
+func formUnavailable(noun string, err error) string {
+	if errors.Is(err, config.ErrNotConfigured) {
+		return fmt.Sprintf("Sorry, the %s command is not configured for this channel.", noun)
+	}
+	return fmt.Sprintf("Sorry, the %s form could not be loaded just now. Please try again in a minute.", noun)
 }

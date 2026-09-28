@@ -513,3 +513,28 @@ func TestDialogTitleNeverExceedsLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestDefuseMentions(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"@jamesarich please look", "@\u200bjamesarich please look"},
+		{"cc @meshtastic/firmware", "cc @\u200bmeshtastic/firmware"},
+		{"(@someone)", "(@\u200bsomeone)"},
+		{"mail me at a@example.com", "mail me at a@example.com"},
+		{"@@double", "@@double"},
+		{"no mentions here", "no mentions here"},
+		{"line\n@start of line", "line\n@\u200bstart of line"},
+	}
+	for _, tt := range tests {
+		if got := defuseMentions(tt.in); got != tt.want {
+			t.Errorf("defuseMentions(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestBuildIssueBodyDefusesMentions(t *testing.T) {
+	fields := []config.FieldConfig{{CustomID: "what", Label: "What happened?"}}
+	body := buildIssueBody(fields, map[string]string{"What happened?": "ping @meshtastic/everyone"}, "reporter", "42")
+	if strings.Contains(body, "@meshtastic/everyone") {
+		t.Errorf("mention survived into the issue body:\n%s", body)
+	}
+}

@@ -17,8 +17,6 @@ faq:
     url: "https://meshtastic.org/docs/contributing/"
   - name: "Translate Android"
     url: "https://meshtastic.org/docs/contributing/"
-  - name: "shidd fard coom"
-    url: "https://shidfardcoom.com/"
   - name: "Private Primary"
     url: "https://meshtastic.org/docs/configuration/tips#creating-a-private-primary-with-default-secondary"
   - name: "Role"

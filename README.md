@@ -62,10 +62,11 @@ Before running the bot, you need to create a Discord application and configure i
 2. **Important:** Treat this token like a password. Never share it or commit it to version control
 3. Copy this token for your environment file (`.env.dev` or `.env.prod`)
 
-### 4. Enable Privileged Gateway Intents
+### 4. Leave the Privileged Gateway Intents off
 
-On the "Bot" tab, scroll down to "Privileged Gateway Intents" and enable:
-- **Message Content Intent** (required for reading messages)
+The bot answers slash commands and dialogs only and never reads messages, so it
+needs none of the privileged intents. Leave Presence, Server Members and Message
+Content off on the "Bot" tab.
 
 ### 5. Set Bot Permissions and Scopes
 

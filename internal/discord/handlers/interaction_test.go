@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 func resetModalStates() {
@@ -131,4 +133,16 @@ func TestDropModalState(t *testing.T) {
 
 	// Dropping a key that is not present must not panic.
 	dropModalState("feature_never_recorded")
+}
+
+func TestHandleInteractionRecoversFromPanic(t *testing.T) {
+	// discordgo dispatches a modal submit with nil Data when it cannot parse a
+	// component, and ModalSubmitData then panics on the type assertion.
+	i := &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{Type: discordgo.InteractionModalSubmit}}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("HandleInteraction let a panic escape: %v", r)
+		}
+	}()
+	HandleInteraction(nil, i)
 }

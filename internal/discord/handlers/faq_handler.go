@@ -55,7 +55,8 @@ func handleFaq(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf("**%s**\n%s", item.Name, item.URL),
+			Content:         fmt.Sprintf("**%s**\n%s", item.Name, item.URL),
+			AllowedMentions: noMentions,
 		},
 	})
 }

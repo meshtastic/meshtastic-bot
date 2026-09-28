@@ -26,6 +26,7 @@ func New(cfg *config.Config, logger *log.Logger) (*DiscordBot, error) {
 	if err := config.LoadModals(cfg.ConfigPath); err != nil {
 		return nil, fmt.Errorf("failed to load modals: %w", err)
 	}
+	config.PrefetchTemplates()
 
 	if _, err := config.LoadFAQ(cfg.FAQPath); err != nil {
 		return nil, fmt.Errorf("failed to load FAQ: %w", err)
@@ -42,6 +43,9 @@ func New(cfg *config.Config, logger *log.Logger) (*DiscordBot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DiscordBot session: %w", err)
 	}
+	// Interactions need no gateway intent. Guilds keeps the server in the
+	// session state; nothing reads messages, so no message events are asked for.
+	session.Identify.Intents = discordgo.IntentsGuilds
 
 	bot := &DiscordBot{
 		session:  session,

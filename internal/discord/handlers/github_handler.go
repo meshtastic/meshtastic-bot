@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -36,6 +37,14 @@ func resolveRepoAlias(name string) string {
 	return trimmed
 }
 
+// repoNamePattern is GitHub's alphabet for repository names. The name becomes
+// an API path segment, so "../other/repo" would otherwise leave the org.
+var repoNamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
+
+func validRepoName(name string) bool {
+	return repoNamePattern.MatchString(name) && name != "." && name != ".."
+}
+
 func handleRepo(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	options := i.ApplicationCommandData().Options
 
@@ -49,6 +58,17 @@ func handleRepo(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		repo = GithubRepo
 	}
 
+	if !validRepoName(repo) {
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "That is not a repository name. Try a short name such as `android`, `apple` or `firmware`.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
 	// Defer response as API call might take time
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
@@ -56,11 +76,18 @@ func handleRepo(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Validate repository exists
 	repository, err := GithubClient.GetRepository(GithubOwner, repo)
+	if err == nil {
+		// A transferred repository redirects to its new owner.
+		if got := repository.GetOwner().GetLogin(); got != "" && !strings.EqualFold(got, GithubOwner) {
+			err = fmt.Errorf("repository now belongs to %s", got)
+		}
+	}
 	if err != nil {
 		log.Printf("Error getting repository %s/%s: %v", GithubOwner, repo, err)
 		errorMsg := fmt.Sprintf("Repository `%s/%s` not found in the organization.", GithubOwner, repo)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-			Content: &errorMsg,
+			Content:         &errorMsg,
+			AllowedMentions: noMentions,
 		})
 		return
 	}
@@ -68,6 +95,7 @@ func handleRepo(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	githubURL := repository.GetHTMLURL()
 
 	s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
-		Content: &githubURL,
+		Content:         &githubURL,
+		AllowedMentions: noMentions,
 	})
 }

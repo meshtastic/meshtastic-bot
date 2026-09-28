@@ -421,3 +421,90 @@ func TestRepoAliasTargetsAreWellFormed(t *testing.T) {
 		}
 	}
 }
+
+func repoInteraction(name string) *discordgo.InteractionCreate {
+	return &discordgo.InteractionCreate{
+		Interaction: &discordgo.Interaction{
+			Type: discordgo.InteractionApplicationCommand,
+			Data: discordgo.ApplicationCommandInteractionData{
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{
+					{Name: "name", Type: discordgo.ApplicationCommandOptionString, Value: name},
+				},
+			},
+		},
+	}
+}
+
+// recordingSession captures the initial response and the final edit.
+func recordingSession(t *testing.T, initial *discordgo.InteractionResponse, edited *string) *discordgo.Session {
+	s, _ := discordgo.New("")
+	s.Client = &http.Client{
+		Transport: &MockRoundTripper{
+			RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.Path, "/callback") {
+					if err := json.NewDecoder(req.Body).Decode(initial); err != nil {
+						t.Errorf("Failed to decode response: %v", err)
+					}
+				} else if req.Method == "PATCH" {
+					var edit discordgo.WebhookEdit
+					if err := json.NewDecoder(req.Body).Decode(&edit); err != nil {
+						t.Errorf("Failed to decode edit: %v", err)
+					}
+					if edit.Content != nil {
+						*edited = *edit.Content
+					}
+				}
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString("{}")), Header: make(http.Header)}, nil
+			},
+		},
+	}
+	return s
+}
+
+func TestHandleRepo_RejectsNamesOutsideTheOrg(t *testing.T) {
+	originalClient, originalOwner := GithubClient, GithubOwner
+	defer func() { GithubClient, GithubOwner = originalClient, originalOwner }()
+	GithubOwner = "meshtastic"
+	GithubClient = &MockGitHubClient{
+		GetRepositoryFunc: func(owner, repo string) (*gogithub.Repository, error) {
+			t.Errorf("GetRepository must not be called, got %s/%s", owner, repo)
+			return nil, errors.New("unexpected")
+		},
+	}
+
+	for _, name := range []string{"../torvalds/linux", "..", ".", "a/b", "web?x=1", "web#frag", "a b", strings.Repeat("x", 101)} {
+		t.Run(name, func(t *testing.T) {
+			var resp discordgo.InteractionResponse
+			var edited string
+			handleRepo(recordingSession(t, &resp, &edited), repoInteraction(name))
+			if resp.Type != discordgo.InteractionResponseChannelMessageWithSource || resp.Data == nil ||
+				resp.Data.Flags&discordgo.MessageFlagsEphemeral == 0 {
+				t.Errorf("want an ephemeral rejection, got %+v", resp)
+			}
+		})
+	}
+}
+
+func TestHandleRepo_RejectsARepositoryOwnedElsewhere(t *testing.T) {
+	originalClient, originalOwner := GithubClient, GithubOwner
+	defer func() { GithubClient, GithubOwner = originalClient, originalOwner }()
+	GithubOwner = "meshtastic"
+	GithubClient = &MockGitHubClient{
+		GetRepositoryFunc: func(owner, repo string) (*gogithub.Repository, error) {
+			return &gogithub.Repository{
+				HTMLURL: gogithub.String("https://github.com/someone/moved"),
+				Owner:   &gogithub.User{Login: gogithub.String("someone")},
+			}, nil
+		},
+	}
+
+	var resp discordgo.InteractionResponse
+	var edited string
+	handleRepo(recordingSession(t, &resp, &edited), repoInteraction("moved"))
+	if strings.Contains(edited, "github.com/someone") {
+		t.Errorf("posted a repository outside the org: %q", edited)
+	}
+	if !strings.Contains(edited, "not found") {
+		t.Errorf("want the not-found message, got %q", edited)
+	}
+}

@@ -17,7 +17,7 @@ func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: "Sorry, the bug report command is not configured for this channel.",
+				Content: formUnavailable("bug report", err),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})
@@ -55,7 +55,7 @@ func handleBug(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: "Sorry, the bug report command is not configured for this channel.",
+				Content: formUnavailable("bug report", err),
 				Flags:   discordgo.MessageFlagsEphemeral,
 			},
 		})

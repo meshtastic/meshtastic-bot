@@ -1,6 +1,10 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"log"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +42,65 @@ type ModalState struct {
 	ChannelID       string
 	Owner           string
 	Repo            string
+
+	// mu guards SubmittedValues, filing and the submission fields: two
+	// submits of the same dialog arrive on separate goroutines.
+	mu     sync.Mutex
+	filing bool
+	// submissionID marks this report's issue body so a retry can find an
+	// issue an earlier attempt created; firstAttempt is when that began.
+	submissionID string
+	firstAttempt time.Time
+}
+
+// submission returns the report's body marker, when it was first filed, and
+// whether it has been tried before.
+func (st *ModalState) submission() (marker string, since time.Time, retried bool) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	retried = st.submissionID != ""
+	if !retried {
+		b := make([]byte, 8)
+		_, _ = rand.Read(b)
+		st.submissionID = hex.EncodeToString(b)
+		st.firstAttempt = time.Now()
+	}
+	return "<!-- meshtastic-bot submission " + st.submissionID + " -->", st.firstAttempt.Add(-time.Minute), retried
+}
+
+// startFiling claims the report for one CreateIssue call at a time, so a
+// double submit cannot file it twice.
+func (st *ModalState) startFiling() bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.filing {
+		return false
+	}
+	st.filing = true
+	return true
+}
+
+func (st *ModalState) stopFiling() {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.filing = false
+}
+
+func (st *ModalState) answeredCount() int {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return len(st.SubmittedValues)
+}
+
+// answers returns a copy of SubmittedValues that is safe to read unlocked.
+func (st *ModalState) answers() map[string]string {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	out := make(map[string]string, len(st.SubmittedValues))
+	for k, v := range st.SubmittedValues {
+		out[k] = v
+	}
+	return out
 }
 
 // modalStates is keyed by command, channel and user.
@@ -102,6 +165,16 @@ func purgeExpiredLocked() {
 	}
 }
 
+// renewModalState restarts a held submission's expiry clock, so a Retry offered
+// after a failure gets the full modalStateTTL.
+func renewModalState(key string) {
+	modalStatesMu.Lock()
+	defer modalStatesMu.Unlock()
+	if state, ok := modalStates[key]; ok {
+		state.CreatedAt = time.Now()
+	}
+}
+
 func dropModalState(key string) {
 	modalStatesMu.Lock()
 	defer modalStatesMu.Unlock()
@@ -119,6 +192,14 @@ var commandHandlers = map[string]func(s *discordgo.Session, i *discordgo.Interac
 
 // HandleInteraction routes interactions to appropriate handlers
 func HandleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// discordgo runs each handler on a bare goroutine, so an unrecovered panic
+	// here ends the process and every submission in flight.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic handling interaction type %d: %v\n%s", i.Type, r, debug.Stack())
+		}
+	}()
+
 	switch i.Type {
 	case discordgo.InteractionApplicationCommand:
 		if handler, exists := commandHandlers[i.ApplicationCommandData().Name]; exists {
@@ -173,7 +254,8 @@ func handleTapsign(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: helpText,
+			Content:         helpText,
+			AllowedMentions: noMentions,
 		},
 	})
 }

@@ -4,6 +4,10 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+// issueTitleMax is GitHub's cap on an issue title. Discord enforces it as the
+// reporter types, instead of GitHub refusing the report after every dialog.
+const issueTitleMax = 256
+
 // returns all slash commands to register
 func getCommands() []*discordgo.ApplicationCommand {
 	return []*discordgo.ApplicationCommand{
@@ -33,6 +37,7 @@ func getCommands() []*discordgo.ApplicationCommand {
 					Name:        "title",
 					Description: "A short, descriptive title for the bug report",
 					Required:    true,
+					MaxLength:   issueTitleMax,
 				},
 			},
 		},
@@ -45,6 +50,7 @@ func getCommands() []*discordgo.ApplicationCommand {
 					Name:        "title",
 					Description: "A short, descriptive title for the feature request",
 					Required:    true,
+					MaxLength:   issueTitleMax,
 				},
 			},
 		},

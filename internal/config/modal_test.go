@@ -271,3 +271,17 @@ func TestConvertGitHubFieldToFieldConfig_TemplatePlaceholderTruncatedByRune(t *t
 		t.Fatalf("placeholder not cut to %d whole characters: %q", discordPlaceholderLimit, got)
 	}
 }
+
+func TestGetOwnerAndRepoPrefersDefaultRepo(t *testing.T) {
+	original := loadedModals
+	defer func() { loadedModals = original }()
+	first, _ := ParseTemplateURL("https://github.com/meshtastic/Meshtastic-Android/blob/main/.github/ISSUE_TEMPLATE/bug_report.yml")
+	loadedModals = &ModalsConfig{DefaultRepo: "meshtastic/web", Modals: []ModalConfig{{Command: "bug", TemplateURL: first}}}
+	if owner, repo := GetOwnerAndRepo(); owner != "meshtastic" || repo != "web" {
+		t.Errorf("GetOwnerAndRepo() = %s/%s, want meshtastic/web", owner, repo)
+	}
+	loadedModals.DefaultRepo = ""
+	if owner, repo := GetOwnerAndRepo(); owner != "meshtastic" || repo != "Meshtastic-Android" {
+		t.Errorf("without default_repo, want the first template's repo, got %s/%s", owner, repo)
+	}
+}
