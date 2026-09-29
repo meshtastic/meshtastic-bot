@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	gogithub "github.com/google/go-github/v57/github"
+	gogithub "github.com/google/go-github/v90/github"
 	internalgithub "github.com/meshtastic/meshtastic-bot/internal/github"
 )
 
@@ -24,11 +24,19 @@ type MockGitHubClient struct {
 	CreateIssueFunc    func(owner, repo, title, body string, labels []string) (*internalgithub.IssueResponse, error)
 	GetRepositoryFunc  func(owner, repo string) (*gogithub.Repository, error)
 	FindSubmissionFunc func(owner, repo, marker string, since time.Time) (*internalgithub.IssueResponse, error)
+	SimilarIssuesFunc  func(owner, repo, text string, limit int) ([]internalgithub.SimilarIssue, error)
 }
 
 func (m *MockGitHubClient) FindSubmission(owner, repo, marker string, since time.Time) (*internalgithub.IssueResponse, error) {
 	if m.FindSubmissionFunc != nil {
 		return m.FindSubmissionFunc(owner, repo, marker, since)
+	}
+	return nil, nil
+}
+
+func (m *MockGitHubClient) SimilarIssues(owner, repo, text string, limit int) ([]internalgithub.SimilarIssue, error) {
+	if m.SimilarIssuesFunc != nil {
+		return m.SimilarIssuesFunc(owner, repo, text, limit)
 	}
 	return nil, nil
 }
@@ -327,8 +335,8 @@ func TestHandleChangelogAutocomplete(t *testing.T) {
 		{
 			name: "Cache Update Success - Matches All",
 			releases: []*gogithub.RepositoryRelease{
-				{TagName: gogithub.String("v1.0.0")},
-				{TagName: gogithub.String("v1.1.0")},
+				{TagName: "v1.0.0"},
+				{TagName: "v1.1.0"},
 			},
 			userInput:      "",
 			expectedCount:  2,
@@ -337,9 +345,9 @@ func TestHandleChangelogAutocomplete(t *testing.T) {
 		{
 			name: "Filtering",
 			releases: []*gogithub.RepositoryRelease{
-				{TagName: gogithub.String("v1.0.0")},
-				{TagName: gogithub.String("v2.0.0")},
-				{TagName: gogithub.String("beta-v3")},
+				{TagName: "v1.0.0"},
+				{TagName: "v2.0.0"},
+				{TagName: "beta-v3"},
 			},
 			userInput:      "v1",
 			expectedCount:  1,
@@ -446,7 +454,7 @@ func TestHandleChangelogAutocomplete_Limit(t *testing.T) {
 	releases := make([]*gogithub.RepositoryRelease, 30)
 	for i := 0; i < 30; i++ {
 		tagName := "v" + strings.Repeat("1", i+1) // Just unique names
-		releases[i] = &gogithub.RepositoryRelease{TagName: &tagName}
+		releases[i] = &gogithub.RepositoryRelease{TagName: tagName}
 	}
 
 	mockClient := &MockGitHubClient{
@@ -502,10 +510,10 @@ func TestHandleChangelogAutocomplete_CaseInsensitive(t *testing.T) {
 	defer func() { GithubClient = originalClient }()
 
 	releases := []*gogithub.RepositoryRelease{
-		{TagName: gogithub.String("V1.0.0")},
-		{TagName: gogithub.String("V1.1.0")},
-		{TagName: gogithub.String("v2.0.0")},
-		{TagName: gogithub.String("Beta-V3")},
+		{TagName: "V1.0.0"},
+		{TagName: "V1.1.0"},
+		{TagName: "v2.0.0"},
+		{TagName: "Beta-V3"},
 	}
 
 	mockClient := &MockGitHubClient{
@@ -566,8 +574,8 @@ func TestHandleChangelogAutocomplete_NoFocusedOption(t *testing.T) {
 	defer func() { GithubClient = originalClient }()
 
 	releases := []*gogithub.RepositoryRelease{
-		{TagName: gogithub.String("v1.0.0")},
-		{TagName: gogithub.String("v2.0.0")},
+		{TagName: "v1.0.0"},
+		{TagName: "v2.0.0"},
 	}
 
 	mockClient := &MockGitHubClient{
@@ -623,7 +631,7 @@ func TestHandleChangelogAutocomplete_CacheReuse(t *testing.T) {
 
 	apiCallCount := 0
 	releases := []*gogithub.RepositoryRelease{
-		{TagName: gogithub.String("v1.0.0")},
+		{TagName: "v1.0.0"},
 	}
 
 	mockClient := &MockGitHubClient{
@@ -688,10 +696,10 @@ func TestHandleChangelogAutocomplete_PartialMatch(t *testing.T) {
 	defer func() { GithubClient = originalClient }()
 
 	releases := []*gogithub.RepositoryRelease{
-		{TagName: gogithub.String("v1.0.0-beta")},
-		{TagName: gogithub.String("v1.0.0-alpha")},
-		{TagName: gogithub.String("v2.0.0")},
-		{TagName: gogithub.String("beta-release-3")},
+		{TagName: "v1.0.0-beta"},
+		{TagName: "v1.0.0-alpha"},
+		{TagName: "v2.0.0"},
+		{TagName: "beta-release-3"},
 	}
 
 	mockClient := &MockGitHubClient{
@@ -752,8 +760,8 @@ func TestUpdateReleaseCache_InitialLoad(t *testing.T) {
 	defer func() { GithubClient = originalClient }()
 
 	releases := []*gogithub.RepositoryRelease{
-		{TagName: gogithub.String("v1.0.0")},
-		{TagName: gogithub.String("v2.0.0")},
+		{TagName: "v1.0.0"},
+		{TagName: "v2.0.0"},
 	}
 
 	mockClient := &MockGitHubClient{
@@ -801,7 +809,7 @@ func TestUpdateReleaseCache_CacheExpiration(t *testing.T) {
 
 	apiCallCount := 0
 	releases := []*gogithub.RepositoryRelease{
-		{TagName: gogithub.String("v1.0.0")},
+		{TagName: "v1.0.0"},
 	}
 
 	mockClient := &MockGitHubClient{
@@ -891,7 +899,7 @@ func TestUpdateReleaseCache_ConcurrentAccess(t *testing.T) {
 	var apiCallMutex sync.Mutex
 
 	releases := []*gogithub.RepositoryRelease{
-		{TagName: gogithub.String("v1.0.0")},
+		{TagName: "v1.0.0"},
 	}
 
 	mockClient := &MockGitHubClient{
@@ -957,7 +965,7 @@ func TestUpdateReleaseCache_DoubleCheckedLocking(t *testing.T) {
 	var apiCallMutex sync.Mutex
 
 	releases := []*gogithub.RepositoryRelease{
-		{TagName: gogithub.String("v1.0.0")},
+		{TagName: "v1.0.0"},
 	}
 
 	mockClient := &MockGitHubClient{
@@ -1006,7 +1014,7 @@ func TestUpdateReleaseCache_EmptyCacheWithExpiredTime(t *testing.T) {
 	defer func() { GithubClient = originalClient }()
 
 	releases := []*gogithub.RepositoryRelease{
-		{TagName: gogithub.String("v1.0.0")},
+		{TagName: "v1.0.0"},
 	}
 
 	mockClient := &MockGitHubClient{
@@ -1094,7 +1102,7 @@ func TestUpdateReleaseCache_ParametersPassedCorrectly(t *testing.T) {
 			capturedRepo = repo
 			capturedLimit = limit
 			return []*gogithub.RepositoryRelease{
-				{TagName: gogithub.String("v1.0.0")},
+				{TagName: "v1.0.0"},
 			}, nil
 		},
 	}
@@ -1893,8 +1901,8 @@ func numberedCommits(from, to int) []*gogithub.RepositoryCommit {
 	var out []*gogithub.RepositoryCommit
 	for n := from; n <= to; n++ {
 		out = append(out, &gogithub.RepositoryCommit{
-			SHA:    gogithub.String(fmt.Sprintf("%07d", n)),
-			Commit: &gogithub.Commit{Message: gogithub.String(fmt.Sprintf("commit %d", n))},
+			SHA:    gogithub.Ptr(fmt.Sprintf("%07d", n)),
+			Commit: &gogithub.Commit{Message: gogithub.Ptr(fmt.Sprintf("commit %d", n))},
 		})
 	}
 	return out
@@ -1915,7 +1923,7 @@ func TestGetChangelogMessageListsTheNewestPastTheAPICap(t *testing.T) {
 	GithubClient = &MockGitHubClient{
 		CompareCommitsFunc: func(owner, repo, base, head string) (*gogithub.CommitsComparison, error) {
 			calls++
-			return &gogithub.CommitsComparison{TotalCommits: gogithub.Int(total), Commits: numberedCommits(288, 537)}, nil
+			return &gogithub.CommitsComparison{TotalCommits: gogithub.Ptr(total), Commits: numberedCommits(288, 537)}, nil
 		},
 	}
 
@@ -1945,8 +1953,8 @@ func TestHandleChangelogAutocompleteSkipsDrafts(t *testing.T) {
 	GithubClient = &MockGitHubClient{
 		GetReleasesFunc: func(owner, repo string, limit int) ([]*gogithub.RepositoryRelease, error) {
 			return []*gogithub.RepositoryRelease{
-				{TagName: gogithub.String("v2.8.1.8e6a88d"), Draft: gogithub.Bool(true)},
-				{TagName: gogithub.String("v2.8.0")},
+				{TagName: "v2.8.1.8e6a88d", Draft: true},
+				{TagName: "v2.8.0"},
 			}, nil
 		},
 	}

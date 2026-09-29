@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
-	gogithub "github.com/google/go-github/v57/github"
+	gogithub "github.com/google/go-github/v90/github"
 )
 
 func TestHandleRepo_DefaultRepository(t *testing.T) {
@@ -34,7 +34,7 @@ func TestHandleRepo_DefaultRepository(t *testing.T) {
 				t.Errorf("Expected owner=test-owner and repo=default-repo, got owner=%s, repo=%s", owner, repo)
 			}
 			return &gogithub.Repository{
-				HTMLURL: gogithub.String(expectedURL),
+				HTMLURL: gogithub.Ptr(expectedURL),
 			}, nil
 		},
 	}
@@ -116,7 +116,7 @@ func TestHandleRepo_SpecificRepository(t *testing.T) {
 				t.Errorf("Expected owner=test-owner and repo=custom-repo, got owner=%s, repo=%s", owner, repo)
 			}
 			return &gogithub.Repository{
-				HTMLURL: gogithub.String(expectedURL),
+				HTMLURL: gogithub.Ptr(expectedURL),
 			}, nil
 		},
 	}
@@ -271,7 +271,7 @@ func TestHandleRepo_EmptyRepositoryName(t *testing.T) {
 		GetRepositoryFunc: func(owner, repo string) (*gogithub.Repository, error) {
 			capturedRepo = repo
 			return &gogithub.Repository{
-				HTMLURL: gogithub.String("https://github.com/test-owner/default-repo"),
+				HTMLURL: gogithub.Ptr("https://github.com/test-owner/default-repo"),
 			}, nil
 		},
 	}
@@ -331,7 +331,7 @@ func TestHandleRepo_NoOptions(t *testing.T) {
 		GetRepositoryFunc: func(owner, repo string) (*gogithub.Repository, error) {
 			capturedRepo = repo
 			return &gogithub.Repository{
-				HTMLURL: gogithub.String("https://github.com/test-owner/default-repo"),
+				HTMLURL: gogithub.Ptr("https://github.com/test-owner/default-repo"),
 			}, nil
 		},
 	}
@@ -492,8 +492,8 @@ func TestHandleRepo_RejectsARepositoryOwnedElsewhere(t *testing.T) {
 	GithubClient = &MockGitHubClient{
 		GetRepositoryFunc: func(owner, repo string) (*gogithub.Repository, error) {
 			return &gogithub.Repository{
-				HTMLURL: gogithub.String("https://github.com/someone/moved"),
-				Owner:   &gogithub.User{Login: gogithub.String("someone")},
+				HTMLURL: gogithub.Ptr("https://github.com/someone/moved"),
+				Owner:   &gogithub.User{Login: gogithub.Ptr("someone")},
 			}, nil
 		},
 	}

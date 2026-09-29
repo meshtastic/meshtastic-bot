@@ -19,6 +19,9 @@ const (
 	// continueModalPrefix is every report dialog's custom ID, followed by the
 	// state key.
 	continueModalPrefix = "modal_continue_"
+	// fileAnywayPrefix and cancelPrefix answer the possible-duplicates offer.
+	fileAnywayPrefix = "fileanyway_"
+	cancelPrefix     = "cancelreport_"
 )
 
 func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, state *ModalState, stateKey string) {
@@ -34,7 +37,47 @@ func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		log.Printf("Not filing the %s submission; Discord refused the acknowledgement: %v", state.Command, err)
 		return
 	}
+	if similar := similarIssues(state); len(similar) > 0 {
+		offerSimilar(s, i, similar, stateKey)
+		return
+	}
 	fileIssue(s, i, state, stateKey)
+}
+
+// similarShown is how many possible duplicates a reporter is shown.
+const similarShown = 3
+
+// similarIssues searches for the report's title; any failure means file it.
+func similarIssues(state *ModalState) []internalgithub.SimilarIssue {
+	if strings.TrimSpace(state.SearchText) == "" {
+		return nil
+	}
+	similar, err := GithubClient.SimilarIssues(state.Owner, state.Repo, state.SearchText, similarShown)
+	if err != nil {
+		log.Printf("Skipping the duplicate check for a %s report: %v", state.Command, err)
+		return nil
+	}
+	if len(similar) > similarShown {
+		similar = similar[:similarShown]
+	}
+	return similar
+}
+
+func offerSimilar(s *discordgo.Session, i *discordgo.InteractionCreate, similar []internalgithub.SimilarIssue, stateKey string) {
+	var b strings.Builder
+	b.WriteString("Before this is filed, is it one of these?\n")
+	escape := strings.NewReplacer("[", "\\[", "]", "\\]")
+	for _, issue := range similar {
+		b.WriteString(fmt.Sprintf("- [#%d %s](<%s>) (%s)\n", issue.Number, escape.Replace(issue.Title), issue.URL, issue.State))
+	}
+	b.WriteString("\nIf it is, add to that issue instead. Otherwise file yours; your answers are kept for 30 minutes.")
+	renewModalState(stateKey)
+	editReply(s, i, b.String(), []discordgo.MessageComponent{
+		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.Button{Label: "File anyway", Style: discordgo.PrimaryButton, CustomID: fileAnywayPrefix + stateKey},
+			discordgo.Button{Label: "Cancel", Style: discordgo.SecondaryButton, CustomID: cancelPrefix + stateKey},
+		}},
+	})
 }
 
 // fileIssue creates the issue and edits the deferred reply with the outcome.
@@ -159,7 +202,20 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 
-	if stateKey, ok := strings.CutPrefix(customID, retryPrefix); ok {
+	if stateKey, ok := strings.CutPrefix(customID, cancelPrefix); ok {
+		dropModalState(stateKey)
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{Content: "No issue was filed.", Components: []discordgo.MessageComponent{}},
+		})
+		return
+	}
+
+	stateKey, ok := strings.CutPrefix(customID, retryPrefix)
+	if !ok {
+		stateKey, ok = strings.CutPrefix(customID, fileAnywayPrefix)
+	}
+	if ok {
 		state, exists := lookupModalState(stateKey)
 		if !exists {
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{

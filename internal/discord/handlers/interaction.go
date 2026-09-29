@@ -21,16 +21,23 @@ var (
 	GithubRepo   string
 )
 
-func InitializeGithub(token, owner, repo string) {
-	GithubClient = github.NewClient(token)
+func InitializeGithub(token, owner, repo string) error {
+	client, err := github.NewClient(token)
+	if err != nil {
+		return err
+	}
+	GithubClient = client
 	GithubOwner = owner
 	GithubRepo = repo
+	return nil
 }
 
 // ModalState tracks the state of multi-part modals
 type ModalState struct {
 	// Title is the reporter's text, used for the GitHub issue.
 	Title string
+	// SearchText is the reporter's own title, searched for duplicates.
+	SearchText string
 	// DisplayTitle heads the dialog. Discord limits that to 45 characters and
 	// Title is arbitrary text, so the two cannot share a field.
 	DisplayTitle    string

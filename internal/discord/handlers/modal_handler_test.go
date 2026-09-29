@@ -359,3 +359,122 @@ func TestFormUnavailableSaysWhy(t *testing.T) {
 		t.Errorf("loading message: %q", got)
 	}
 }
+
+func buttonInteraction(customID string) *discordgo.InteractionCreate {
+	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type:   discordgo.InteractionMessageComponent,
+		Data:   discordgo.MessageComponentInteractionData{CustomID: customID},
+		Member: &discordgo.Member{User: &discordgo.User{ID: "42", Username: "reporter"}},
+	}}
+}
+
+func TestSimilarIssuesAreOfferedBeforeFiling(t *testing.T) {
+	resetModalStates()
+	key := "bug_c_42"
+	state := filedState(key)
+	state.SearchText = "Waypoint notifications ignore app settings"
+
+	created := 0
+	rec := &submitRecorder{}
+	withGithubClient(t, &MockGitHubClient{
+		SimilarIssuesFunc: func(owner, repo, text string, limit int) ([]internalgithub.SimilarIssue, error) {
+			if owner != "meshtastic" || repo != "web" || text != state.SearchText {
+				t.Errorf("searched %s/%s for %q", owner, repo, text)
+			}
+			return []internalgithub.SimilarIssue{
+				{Number: 5326, Title: "Waypoint [notifications] ignore settings", State: "open", URL: "https://github.com/meshtastic/web/issues/5326"},
+			}, nil
+		},
+		CreateIssueFunc: func(owner, repo, title, body string, labels []string) (*internalgithub.IssueResponse, error) {
+			created++
+			return &internalgithub.IssueResponse{Number: 9, HTMLURL: "https://github.com/meshtastic/web/issues/9"}, nil
+		},
+	})
+
+	createIssueFromState(rec.session(t), submitInteraction(), state, key)
+	if created != 0 {
+		t.Fatal("filed before the reporter saw the possible duplicates")
+	}
+	offer := rec.lastEdit(t)
+	if offer.Content == nil || !strings.Contains(*offer.Content, "[#5326 Waypoint \\[notifications\\] ignore settings](<https://github.com/meshtastic/web/issues/5326>) (open)") {
+		t.Errorf("offer does not link the similar issue: %v", offer.Content)
+	}
+	if !strings.Contains(string(offer.Components), fileAnywayPrefix+key) || !strings.Contains(string(offer.Components), cancelPrefix+key) {
+		t.Errorf("offer has no File anyway and Cancel buttons: %s", offer.Components)
+	}
+
+	handleButtonClick(rec.session(t), buttonInteraction(fileAnywayPrefix+key))
+	if created != 1 {
+		t.Fatalf("File anyway filed %d issues, want 1", created)
+	}
+	if edit := rec.lastEdit(t); edit.Content == nil || !strings.Contains(*edit.Content, "issues/9") {
+		t.Errorf("File anyway reply does not link the issue: %v", edit.Content)
+	}
+}
+
+func TestCancelFilesNothingAndForgetsTheReport(t *testing.T) {
+	resetModalStates()
+	key := "bug_c_42"
+	filedState(key)
+	withGithubClient(t, &MockGitHubClient{
+		CreateIssueFunc: func(owner, repo, title, body string, labels []string) (*internalgithub.IssueResponse, error) {
+			t.Error("Cancel filed an issue")
+			return nil, errors.New("unexpected")
+		},
+	})
+	rec := &submitRecorder{}
+	handleButtonClick(rec.session(t), buttonInteraction(cancelPrefix+key))
+	if _, ok := lookupModalState(key); ok {
+		t.Error("the cancelled report is still held")
+	}
+	if len(rec.responses) != 1 || rec.responses[0].Type != discordgo.InteractionResponseUpdateMessage {
+		t.Errorf("want the offer replaced, got %+v", rec.responses)
+	}
+}
+
+func TestAFailedSearchStillFilesTheReport(t *testing.T) {
+	resetModalStates()
+	key := "bug_c_42"
+	state := filedState(key)
+	state.SearchText = "Crash on boot"
+	created := 0
+	withGithubClient(t, &MockGitHubClient{
+		SimilarIssuesFunc: func(owner, repo, text string, limit int) ([]internalgithub.SimilarIssue, error) {
+			return nil, errors.New("secondary rate limit")
+		},
+		CreateIssueFunc: func(owner, repo, title, body string, labels []string) (*internalgithub.IssueResponse, error) {
+			created++
+			return &internalgithub.IssueResponse{Number: 10, HTMLURL: "https://github.com/meshtastic/web/issues/10"}, nil
+		},
+	})
+	rec := &submitRecorder{}
+	createIssueFromState(rec.session(t), submitInteraction(), state, key)
+	if created != 1 {
+		t.Errorf("filed %d issues after a failed search, want 1", created)
+	}
+}
+
+func TestTheDuplicatesOfferRestartsTheHoldClock(t *testing.T) {
+	resetModalStates()
+	key := "bug_c_42"
+	state := filedState(key)
+	state.SearchText = "Crash on boot"
+	modalStatesMu.Lock()
+	modalStates[key].CreatedAt = time.Now().Add(-25 * time.Minute)
+	modalStatesMu.Unlock()
+
+	withGithubClient(t, &MockGitHubClient{
+		SimilarIssuesFunc: func(owner, repo, text string, limit int) ([]internalgithub.SimilarIssue, error) {
+			return []internalgithub.SimilarIssue{{Number: 1, Title: "Crash", State: "open", URL: "https://github.com/meshtastic/web/issues/1"}}, nil
+		},
+	})
+	rec := &submitRecorder{}
+	createIssueFromState(rec.session(t), submitInteraction(), state, key)
+
+	modalStatesMu.Lock()
+	age := time.Since(modalStates[key].CreatedAt)
+	modalStatesMu.Unlock()
+	if age > time.Minute {
+		t.Errorf("after the offer the report expires in %s, not the 30 minutes it promises", modalStateTTL-age)
+	}
+}

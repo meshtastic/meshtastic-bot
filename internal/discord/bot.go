@@ -36,7 +36,9 @@ func New(cfg *config.Config, logger *log.Logger) (*DiscordBot, error) {
 	if owner == "" || repo == "" {
 		return nil, fmt.Errorf("failed to extract owner/repo from config template URLs")
 	}
-	handlers.InitializeGithub(cfg.GithubToken, owner, repo)
+	if err := handlers.InitializeGithub(cfg.GithubToken, owner, repo); err != nil {
+		return nil, err
+	}
 	logger.Printf("Initialized GitHub client for %s/%s", owner, repo)
 
 	session, err := discordgo.New("Bot " + cfg.DiscordToken)

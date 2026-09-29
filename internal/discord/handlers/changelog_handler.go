@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	gogithub "github.com/google/go-github/v57/github"
+	gogithub "github.com/google/go-github/v90/github"
 )
 
 const (

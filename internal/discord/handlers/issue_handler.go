@@ -49,6 +49,7 @@ func openIssueForm(s *discordgo.Session, i *discordgo.InteractionCreate, cmd iss
 	stateKey := fmt.Sprintf("%s_%s_%s", cmd.name, i.ChannelID, i.Member.User.ID)
 	state := &ModalState{
 		Title:           issueTitle(form.TitlePrefix, commandTitleOption(i), form.Name),
+		SearchText:      commandTitleOption(i),
 		DisplayTitle:    form.Name,
 		AllFields:       fields,
 		SubmittedValues: make(map[string]string),

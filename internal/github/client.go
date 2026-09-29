@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
-	"github.com/google/go-github/v57/github"
-	"golang.org/x/oauth2"
+	"github.com/google/go-github/v90/github"
 )
 
 const (
@@ -27,6 +27,50 @@ type Client interface {
 	CreateIssue(owner, repo, title, body string, labels []string) (*IssueResponse, error)
 	GetRepository(owner, repo string) (*github.Repository, error)
 	FindSubmission(owner, repo, marker string, since time.Time) (*IssueResponse, error)
+	SimilarIssues(owner, repo, text string, limit int) ([]SimilarIssue, error)
+}
+
+// SimilarIssue is an existing issue offered as a possible duplicate.
+type SimilarIssue struct {
+	Number int
+	Title  string
+	State  string
+	URL    string
+}
+
+// searchQueryLimit is GitHub's cap on a search query, qualifiers included.
+const searchQueryLimit = 256
+
+// SimilarIssues returns the issues GitHub's semantic search ranks closest to
+// text, open or closed; a closed duplicate is still the answer.
+func (c *LiveGitHubClient) SimilarIssues(owner, repo, text string, limit int) ([]SimilarIssue, error) {
+	ctx, cancel := context.WithTimeout(c.ctx, apiTimeout)
+	defer cancel()
+	result, _, err := c.client.Search.Issues(ctx, similarIssuesQuery(owner, repo, text), &github.SearchOptions{
+		SearchType:  "semantic",
+		ListOptions: github.ListOptions{PerPage: limit},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to search issues: %w", err)
+	}
+	var out []SimilarIssue
+	for _, issue := range result.Issues {
+		out = append(out, SimilarIssue{Number: issue.GetNumber(), Title: issue.GetTitle(), State: issue.GetState(), URL: issue.GetHTMLURL()})
+	}
+	return out, nil
+}
+
+// similarIssuesQuery keeps is:issue, without which the search falls back from
+// semantic to lexical, and the whole query within GitHub's limit.
+func similarIssuesQuery(owner, repo, text string) string {
+	qualifiers := fmt.Sprintf("repo:%s/%s is:issue ", owner, repo)
+	room := searchQueryLimit - len(qualifiers)
+	text = strings.Join(strings.Fields(text), " ")
+	for len(text) > room {
+		_, size := utf8.DecodeLastRuneInString(text)
+		text = text[:len(text)-size]
+	}
+	return qualifiers + text
 }
 
 type CachedRepository struct {
@@ -76,7 +120,7 @@ func (c *LiveGitHubClient) FindSubmission(owner, repo, marker string, since time
 		if resp.NextPage == 0 {
 			return nil, nil
 		}
-		opts.Page = resp.NextPage
+		opts.ListOptions.Page = resp.NextPage
 	}
 	// Not found but not ruled out either; the caller files nothing on error.
 	return nil, fmt.Errorf("more than %d pages of recent issues to check", findSubmissionPages)
@@ -111,18 +155,17 @@ type IssueResponse struct {
 	ID      int64  `json:"id"`
 }
 
-func NewClient(token string) Client {
-	ctx := context.Background()
-
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-	tc := oauth2.NewClient(ctx, ts)
-
+func NewClient(token string) (Client, error) {
+	client, err := github.NewClient(github.WithAuthToken(token))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GitHub client: %w", err)
+	}
 	return &LiveGitHubClient{
 		token:     token,
-		client:    github.NewClient(tc),
-		ctx:       ctx,
+		client:    client,
+		ctx:       context.Background(),
 		repoCache: make(map[string]*CachedRepository),
-	}
+	}, nil
 }
 
 func (c *LiveGitHubClient) GetReleases(owner, repo string, limit int) ([]*github.RepositoryRelease, error) {
@@ -155,15 +198,7 @@ func (c *LiveGitHubClient) CreateIssue(owner, repo, title, body string, labels [
 	// The title is the reporter's own text; it stays out of the host log.
 	log.Printf("[GitHub API] Creating issue in %s/%s with labels %v", owner, repo, labels)
 
-	req := &github.IssueRequest{
-		Title: github.String(title),
-		Body:  github.String(body),
-	}
-
-	// go-github requires *string slices, so we adapt if labels exist
-	if len(labels) > 0 {
-		req.Labels = &labels
-	}
+	req := github.CreateIssueRequest{Title: title, Body: github.Ptr(body), Labels: labels}
 
 	ctx, cancel := context.WithTimeout(c.ctx, apiTimeout)
 	defer cancel()

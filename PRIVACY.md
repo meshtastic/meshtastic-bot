@@ -17,8 +17,9 @@ These commands open a form. When you submit it, the bot creates an issue in a
 public GitHub repository containing:
 
 - every value you typed into the form
-- the text of any log files you attached to the form, as they are; other
-  files are not included, and only their names are listed
+- the text of any log files you attached to the form, as they are, cut short
+  if the issue would pass GitHub's size limit; other files are not included,
+  and only their names are listed
 - your Discord username and your Discord numeric user ID
 
 **Both are published publicly and permanently.** The issue is visible to anyone
@@ -80,7 +81,7 @@ this project.
 ## Children
 
 The bot is not directed at children. It collects only what you type or attach
-to a form and the Discord username attached to it.
+to a form, and your Discord username and numeric user ID.
 
 ## Changes
 
