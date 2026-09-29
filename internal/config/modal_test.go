@@ -193,7 +193,8 @@ func TestNoticeComponent(t *testing.T) {
 	if input.CustomID != NoticeFieldID {
 		t.Errorf("CustomID = %q, want %q", input.CustomID, NoticeFieldID)
 	}
-	if input.Required {
+	// Discord treats an omitted required as true, so false must be sent.
+	if input.Required == nil || *input.Required {
 		t.Error("the notice must not be required, or a reporter cannot submit without filling it in")
 	}
 	if input.Label == "" {

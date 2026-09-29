@@ -11,8 +11,15 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// retryPrefix marks the button that re-files a report after GitHub failed.
-const retryPrefix = "retry_"
+const (
+	// retryPrefix marks the button that re-files a report after GitHub failed.
+	retryPrefix = "retry_"
+	// continuePrefix marks the button that opens a report's next dialog.
+	continuePrefix = "continue_"
+	// continueModalPrefix is every report dialog's custom ID, followed by the
+	// state key.
+	continueModalPrefix = "modal_continue_"
+)
 
 func createIssueFromState(s *discordgo.Session, i *discordgo.InteractionCreate, state *ModalState, stateKey string) {
 	// Acknowledge before calling GitHub: CreateIssue can outlast Discord's 3 s
@@ -54,7 +61,7 @@ func fileIssue(s *discordgo.Session, i *discordgo.InteractionCreate, state *Moda
 
 	if issue == nil {
 		values := state.answers()
-		body := buildIssueBody(state.AllFields, values, i.Member.User.Username, i.Member.User.ID) + "\n\n" + marker
+		body := issueBody(state.AllFields, values, state.files(), i.Member.User.Username, i.Member.User.ID, marker)
 		var err error
 		issue, err = GithubClient.CreateIssue(state.Owner, state.Repo, state.Title, body, state.Labels)
 		if err != nil {
@@ -64,13 +71,9 @@ func fileIssue(s *discordgo.Session, i *discordgo.InteractionCreate, state *Moda
 		}
 	}
 
-	// A Discord modal takes text only, so screenshots, recordings and other
-	// attachments cannot be collected here at all. Say so on every issue, and
-	// point at the link just given, rather than leaving the reporter to work out
-	// where their screenshot was meant to go.
 	confirmationMessage := fmt.Sprintf("✅ Issue #%d created successfully!\n%s", issue.Number, issue.HTMLURL) +
-		"\n\n**Note:** Screenshots, screen recordings and other attachments cannot be sent from Discord. " +
-		"Open the issue linked above and add them in a comment. Markdown works there too." +
+		"\n\n**Note:** Text log files attached in the form are in the issue. Screenshots and screen " +
+		"recordings cannot be sent from Discord, so open the issue linked above and add them in a comment." +
 		"\n\nThis issue is public and records your Discord username and user ID. See the " +
 		"[privacy policy](<https://github.com/meshtastic/meshtastic-bot/blob/main/PRIVACY.md>)."
 
@@ -99,78 +102,8 @@ func editReply(s *discordgo.Session, i *discordgo.InteractionCreate, content str
 	}
 }
 
-func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	data := i.ModalSubmitData()
-
-	// Determine which command this modal is for based on CustomID
-	// Format: "modal_<command>_<channelID>" or "modal_continue_<stateKey>"
-	parts := strings.Split(data.CustomID, "_")
-	if len(parts) < 2 {
-		log.Printf("Invalid modal CustomID format (%d segments)", len(parts))
-		return
-	}
-
-	// Check if this is a continuation modal
-	if parts[1] == "continue" && len(parts) >= 3 {
-		handleModalContinuation(s, i, strings.Join(parts[2:], "_"))
-		return
-	}
-
-	command := parts[1]
-	channelID := i.ChannelID
-
-	// Check if this is a multi-part modal
-	stateKey := fmt.Sprintf("%s_%s_%s", command, channelID, i.Member.User.ID)
-	state, hasState := lookupModalState(stateKey)
-
-	if hasState {
-		collectSubmittedValues(state, data.Components)
-
-		currentIndex := state.answeredCount()
-
-		// Check if there are more fields to show
-		if currentIndex < len(state.AllFields) {
-			totalParts := (len(state.AllFields) + 4) / 5
-			currentPart := (currentIndex + 4) / 5
-			message := continuePrompt(currentPart, totalParts)
-
-			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: message,
-					Flags:   discordgo.MessageFlagsEphemeral,
-					Components: []discordgo.MessageComponent{
-						discordgo.ActionsRow{
-							Components: []discordgo.MessageComponent{
-								discordgo.Button{
-									Label:    "Continue",
-									Style:    discordgo.PrimaryButton,
-									CustomID: fmt.Sprintf("continue_%s", stateKey),
-								},
-							},
-						},
-					},
-				},
-			})
-			if err != nil {
-				log.Printf("Error responding with continue button: %v", err)
-			}
-			return
-		}
-
-		// All fields collected - create the GitHub issue
-		createIssueFromState(s, i, state, stateKey)
-		return
-	}
-
-	// No state means the submission was lost: the bot restarted, or the modal
-	// sat open across a redeploy. /bug and /feature both record state when they
-	// open the modal, so this is never a normal single-modal submission.
-	//
-	// Filing an issue from whatever this one modal happens to hold would create
-	// a partial report and silently drop every field that was never collected,
-	// so ask for a fresh submission instead.
-	log.Printf("No modal state for a %s submission; asking for resubmission", command)
+func respondExpired(s *discordgo.Session, i *discordgo.InteractionCreate, stateKey string) {
+	log.Printf("Modal state not found for a %s submission", commandFromStateKey(stateKey))
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -180,67 +113,53 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	})
 }
 
-// handleModalContinuation processes multi-part modal submissions
-func handleModalContinuation(s *discordgo.Session, i *discordgo.InteractionCreate, stateKey string) {
+func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ModalSubmitData()
+
+	// A dialog opened before a restart lost its state with the process, and one
+	// from an older build carries "modal_<command>_<channelID>".
+	stateKey, ok := strings.CutPrefix(data.CustomID, continueModalPrefix)
+	if !ok {
+		respondExpired(s, i, strings.TrimPrefix(data.CustomID, "modal_"))
+		return
+	}
 	state, exists := lookupModalState(stateKey)
 	if !exists {
-		log.Printf("Modal state not found for a %s submission", commandFromStateKey(stateKey))
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "❌ Session expired. Please start over.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
+		respondExpired(s, i, stateKey)
 		return
 	}
 
-	// Extract submitted values
-	data := i.ModalSubmitData()
-	collectSubmittedValues(state, data.Components)
+	collectSubmittedValues(state, data.Components, data.Resolved.Attachments)
 
-	currentIndex := state.answeredCount()
-
-	// Check if there are more fields to show
-	if currentIndex < len(state.AllFields) {
-		totalParts := (len(state.AllFields) + 4) / 5
-		currentPart := (currentIndex + 4) / 5
-		message := continuePrompt(currentPart, totalParts)
-
-		// Create continue button
-		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: message,
-				Flags:   discordgo.MessageFlagsEphemeral,
-				Components: []discordgo.MessageComponent{
-					discordgo.ActionsRow{
-						Components: []discordgo.MessageComponent{
-							discordgo.Button{
-								Label:    "Continue",
-								Style:    discordgo.PrimaryButton,
-								CustomID: fmt.Sprintf("continue_%s", stateKey),
-							},
-						},
-					},
-				},
-			},
-		})
-		if err != nil {
-			log.Printf("Error responding with continue button: %v", err)
-		}
+	next := state.finishDialog()
+	if next >= len(state.AllFields) {
+		createIssueFromState(s, i, state, stateKey)
 		return
 	}
 
-	// All fields collected - create the GitHub issue
-	createIssueFromState(s, i, state, stateKey)
+	totalParts := (len(state.AllFields) + config.DialogComponentLimit - 1) / config.DialogComponentLimit
+	currentPart := (next + config.DialogComponentLimit - 1) / config.DialogComponentLimit
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: continuePrompt(currentPart, totalParts),
+			Flags:   discordgo.MessageFlagsEphemeral,
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+					discordgo.Button{Label: "Continue", Style: discordgo.PrimaryButton, CustomID: continuePrefix + stateKey},
+				}},
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("Error responding with continue button: %v", err)
+	}
 }
 
 func handleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 
-	if strings.HasPrefix(customID, retryPrefix) {
-		stateKey := strings.TrimPrefix(customID, retryPrefix)
+	if stateKey, ok := strings.CutPrefix(customID, retryPrefix); ok {
 		state, exists := lookupModalState(stateKey)
 		if !exists {
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -262,66 +181,12 @@ func handleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Check if this is a continue button
-	if strings.HasPrefix(customID, "continue_") {
-		stateKey := strings.TrimPrefix(customID, "continue_")
+	if stateKey, ok := strings.CutPrefix(customID, continuePrefix); ok {
 		state, exists := lookupModalState(stateKey)
 		if !exists {
-			log.Printf("Modal state not found for a %s submission", commandFromStateKey(stateKey))
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "❌ Session expired. Please start over.",
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
-			})
+			respondExpired(s, i, stateKey)
 			return
 		}
-
-		// Show the next modal chunk
-		currentIndex := state.answeredCount()
-		endIndex := currentIndex + 5
-		if endIndex > len(state.AllFields) {
-			endIndex = len(state.AllFields)
-		}
-		nextChunk := state.AllFields[currentIndex:endIndex]
-
-		// Build modal components
-		components := make([]discordgo.MessageComponent, 0, len(nextChunk))
-		for _, field := range nextChunk {
-			style := discordgo.TextInputShort
-			if field.Style == "paragraph" {
-				style = discordgo.TextInputParagraph
-			}
-
-			components = append(components, discordgo.ActionsRow{
-				Components: []discordgo.MessageComponent{
-					discordgo.TextInput{
-						CustomID:    field.CustomID,
-						Label:       field.Label,
-						Style:       style,
-						Placeholder: truncatePlaceholder(field.Placeholder),
-						Required:    field.Required,
-					},
-				},
-			})
-		}
-
-		// Warn on the dialog the reporter submits from, if it has room.
-		if endIndex == len(state.AllFields) && len(components) < 5 {
-			components = append(components, config.NoticeComponent())
-		}
-
-		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseModal,
-			Data: &discordgo.InteractionResponseData{
-				CustomID:   fmt.Sprintf("modal_continue_%s", stateKey),
-				Title:      dialogTitle(state),
-				Components: components,
-			},
-		})
-		if err != nil {
-			log.Printf("Error showing next modal: %v", err)
-		}
+		showDialog(s, i, state, stateKey)
 	}
 }

@@ -225,7 +225,7 @@ func TestCollectSubmittedValuesIsSafeConcurrently(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			collectSubmittedValues(state, components(string(rune('a'+n%26))))
+			collectSubmittedValues(state, components(string(rune('a'+n%26))), nil)
 			_ = state.answeredCount()
 		}(n)
 	}

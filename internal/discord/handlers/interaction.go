@@ -43,10 +43,17 @@ type ModalState struct {
 	Owner           string
 	Repo            string
 
-	// mu guards SubmittedValues, filing and the submission fields: two
-	// submits of the same dialog arrive on separate goroutines.
+	// mu guards SubmittedValues, Files, the dialog position, filing and the
+	// submission fields: two submits of the same dialog arrive on separate
+	// goroutines.
 	mu     sync.Mutex
 	filing bool
+	Files  []AttachedFile
+	// next is the first field no dialog has shown yet; shownEnd is where the
+	// open dialog's fields stop. Counting answers instead loops forever on a
+	// field that returns none, such as an upload left out of a legacy dialog.
+	next     int
+	shownEnd int
 	// submissionID marks this report's issue body so a retry can find an
 	// issue an earlier attempt created; firstAttempt is when that began.
 	submissionID string
@@ -66,6 +73,40 @@ func (st *ModalState) submission() (marker string, since time.Time, retried bool
 		st.firstAttempt = time.Now()
 	}
 	return "<!-- meshtastic-bot submission " + st.submissionID + " -->", st.firstAttempt.Add(-time.Minute), retried
+}
+
+// AttachedFile is a file the reporter uploaded in a dialog.
+type AttachedFile struct {
+	Name        string
+	URL         string
+	Size        int
+	ContentType string
+}
+
+// beginDialog returns the fields the next dialog shows.
+func (st *ModalState) beginDialog() (start, end int) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	start = st.next
+	end = min(start+config.DialogComponentLimit, len(st.AllFields))
+	st.shownEnd = end
+	return start, end
+}
+
+// finishDialog records the open dialog as answered and returns the next field.
+func (st *ModalState) finishDialog() int {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.shownEnd > st.next {
+		st.next = st.shownEnd
+	}
+	return st.next
+}
+
+func (st *ModalState) files() []AttachedFile {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return append([]AttachedFile(nil), st.Files...)
 }
 
 // startFiling claims the report for one CreateIssue call at a time, so a
@@ -242,6 +283,7 @@ func tapsignHelp() string {
 	b.WriteString("a GitHub issue and replies with the link. They answer in the Android app ")
 	b.WriteString("and web client channels only.\n")
 	b.WriteString("The issue is public and records your Discord username and user ID. ")
+	b.WriteString("The form takes text log files, which go into the issue as they are. ")
 	b.WriteString("Screenshots cannot be sent from Discord, so add them in a comment on the ")
 	b.WriteString("issue once it exists.\n")
 

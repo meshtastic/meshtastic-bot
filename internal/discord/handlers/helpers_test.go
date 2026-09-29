@@ -136,7 +136,7 @@ func TestBuildIssueBody(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := buildIssueBody(tt.allFields, tt.submittedValues, tt.username, tt.userID)
+			result := buildIssueBody(tt.allFields, tt.submittedValues, nil, tt.username, tt.userID)
 
 			for _, want := range tt.wantContains {
 				if !strings.Contains(result, want) {
@@ -168,10 +168,10 @@ func TestBuildIssueBodyOrderIsDeterministic(t *testing.T) {
 		"Logs":               "none",
 	}
 
-	first := buildIssueBody(allFields, submitted, "user", "1")
+	first := buildIssueBody(allFields, submitted, nil, "user", "1")
 
 	for i := 0; i < 50; i++ {
-		if got := buildIssueBody(allFields, submitted, "user", "1"); got != first {
+		if got := buildIssueBody(allFields, submitted, nil, "user", "1"); got != first {
 			t.Fatalf("buildIssueBody() output varied between calls:\nfirst: %q\ngot:   %q", first, got)
 		}
 	}
@@ -422,7 +422,7 @@ func TestCollectSubmittedValuesSkipsNotice(t *testing.T) {
 		row("steps", "1. flash\n2. wait"),
 		row(config.NoticeFieldID, ""),
 		row("logs", "none"),
-	})
+	}, nil)
 
 	if _, present := state.SubmittedValues[config.NoticeFieldID]; present {
 		t.Error("the notice was collected under its custom ID")
@@ -533,7 +533,7 @@ func TestDefuseMentions(t *testing.T) {
 
 func TestBuildIssueBodyDefusesMentions(t *testing.T) {
 	fields := []config.FieldConfig{{CustomID: "what", Label: "What happened?"}}
-	body := buildIssueBody(fields, map[string]string{"What happened?": "ping @meshtastic/everyone"}, "reporter", "42")
+	body := buildIssueBody(fields, map[string]string{"What happened?": "ping @meshtastic/everyone"}, nil, "reporter", "42")
 	if strings.Contains(body, "@meshtastic/everyone") {
 		t.Errorf("mention survived into the issue body:\n%s", body)
 	}

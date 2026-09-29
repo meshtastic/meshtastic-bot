@@ -17,6 +17,8 @@ These commands open a form. When you submit it, the bot creates an issue in a
 public GitHub repository containing:
 
 - every value you typed into the form
+- the text of any log files you attached to the form, as they are; other
+  files are not included, and only their names are listed
 - your Discord username and your Discord numeric user ID
 
 **Both are published publicly and permanently.** The issue is visible to anyone
@@ -38,7 +40,8 @@ These commands read public information and reply to you. Nothing is retained.
 
 - No database, no file storage, and no analytics. The bot stores nothing between
   restarts.
-- No channel messages, direct messages, voice data, or attachments.
+- No channel messages, direct messages, or voice data. The only files it reads
+  are those you attach to a `/bug` or `/feature` form, when it creates the issue.
 - No advertising, profiling, or sale of information to anyone.
 
 ## Retention
@@ -76,8 +79,8 @@ this project.
 
 ## Children
 
-The bot is not directed at children. It collects only what you type into a form
-and the Discord username attached to it.
+The bot is not directed at children. It collects only what you type or attach
+to a form and the Discord username attached to it.
 
 ## Changes
 

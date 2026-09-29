@@ -30,6 +30,7 @@ type FieldAttributes struct {
 	Value       string   `yaml:"value,omitempty"`
 	Options     []Option `yaml:"options,omitempty"`
 	Multiple    bool     `yaml:"multiple,omitempty"`
+	Render      string   `yaml:"render,omitempty"`
 }
 
 type FieldValidations struct {
@@ -60,6 +61,14 @@ type FieldConfig struct {
 	Required    bool   `yaml:"required"`
 	MinLength   int    `yaml:"min_length"`
 	MaxLength   int    `yaml:"max_length"`
+	Description string `yaml:"description"`
+	// Render is the template's language for a field GitHub shows as code.
+	Render string `yaml:"render"`
+
+	// Kind, Options and Multiple come from the template, not config.yaml.
+	Kind     FieldKind `yaml:"-"`
+	Options  []string  `yaml:"-"`
+	Multiple bool      `yaml:"-"`
 }
 
 type ModalConfig struct {
@@ -366,10 +375,22 @@ func ConvertGitHubFieldToFieldConfig(field GitHubTemplateField) *FieldConfig {
 
 	config := &FieldConfig{
 		CustomID:    field.ID,
-		Label:       field.Attributes.Label,
+		Label:       truncateRunes(field.Attributes.Label, labelLimit),
 		Style:       style,
 		Placeholder: truncateRunes(placeholder, discordPlaceholderLimit),
 		Required:    field.Validations.Required,
+		Description: truncateRunes(strings.TrimSpace(field.Attributes.Description), labelDescriptionLimit),
+		Render:      field.Attributes.Render,
+	}
+
+	// A select holds at most 25 options; a longer list stays a text box whose
+	// placeholder lists what fits.
+	if n := len(field.Attributes.Options); field.Type == "dropdown" && n > 0 && n <= selectOptionLimit {
+		config.Kind = FieldSelect
+		config.Multiple = field.Attributes.Multiple
+		for _, opt := range field.Attributes.Options {
+			config.Options = append(config.Options, truncateRunes(opt.Label, selectOptionTextLimit))
+		}
 	}
 
 	// Set reasonable defaults for min/max length
@@ -426,11 +447,56 @@ func truncateRunes(s string, limit int) string {
 	return string(r[:limit-1]) + "…"
 }
 
-// GetAllFieldsForModal returns all fields for a modal config (used for multi-part modals)
-// Returns: fields, title, owner, repo, error
-func GetAllFieldsForModal(command, channelID string) ([]FieldConfig, string, string, string, error) {
+// IssueForm is what a /bug or /feature dialog needs from its template.
+type IssueForm struct {
+	Fields []FieldConfig
+	// Name heads the dialog; TitlePrefix and Labels are what GitHub's own form
+	// would give the issue.
+	Name        string
+	TitlePrefix string
+	Labels      []string
+	Owner       string
+	Repo        string
+}
+
+// templateLabels reads a template's labels, which the schema allows as a list
+// or a comma-separated string.
+func templateLabels(raw interface{}) []string {
+	var out []string
+	switch v := raw.(type) {
+	case string:
+		for _, l := range strings.Split(v, ",") {
+			if l = strings.TrimSpace(l); l != "" {
+				out = append(out, l)
+			}
+		}
+	case []interface{}:
+		for _, item := range v {
+			if l, ok := item.(string); ok && strings.TrimSpace(l) != "" {
+				out = append(out, strings.TrimSpace(l))
+			}
+		}
+	}
+	return out
+}
+
+// GetIssueForm returns the form configured for a command in a channel.
+func GetIssueForm(command, channelID string) (*IssueForm, error) {
+	fields, name, owner, repo, template, err := getAllFieldsForModal(command, channelID)
+	if err != nil {
+		return nil, err
+	}
+	form := &IssueForm{Fields: fields, Name: name, Owner: owner, Repo: repo}
+	if template != nil {
+		form.TitlePrefix = template.Title
+		form.Labels = templateLabels(template.Labels)
+	}
+	return form, nil
+}
+
+func getAllFieldsForModal(command, channelID string) ([]FieldConfig, string, string, string, *GitHubIssueTemplate, error) {
 	if loadedModals == nil {
-		return nil, "", "", "", fmt.Errorf("modals not loaded")
+		return nil, "", "", "", nil, fmt.Errorf("modals not loaded")
 	}
 
 	// Find the matching modal config
@@ -451,19 +517,21 @@ func GetAllFieldsForModal(command, channelID string) ([]FieldConfig, string, str
 	}
 
 	if modalConfig == nil {
-		return nil, "", "", "", fmt.Errorf("%w: command '%s' in channel '%s'", ErrNotConfigured, command, channelID)
+		return nil, "", "", "", nil, fmt.Errorf("%w: command '%s' in channel '%s'", ErrNotConfigured, command, channelID)
 	}
 
 	var fields []FieldConfig
 	var title string
 	var owner string
 	var repo string
+	var template *GitHubIssueTemplate
 
 	// If template URL is configured, fetch and convert fields
 	if modalConfig.TemplateURL != nil {
-		template, err := FetchGitHubTemplate(modalConfig.TemplateURL)
+		var err error
+		template, err = FetchGitHubTemplate(modalConfig.TemplateURL)
 		if err != nil {
-			return nil, "", "", "", fmt.Errorf("failed to fetch template: %w", err)
+			return nil, "", "", "", nil, fmt.Errorf("failed to fetch template: %w", err)
 		}
 
 		// Use template name as title
@@ -491,18 +559,15 @@ func GetAllFieldsForModal(command, channelID string) ([]FieldConfig, string, str
 		repo = ""
 	}
 
-	return fields, title, owner, repo, nil
+	return fields, title, owner, repo, template, nil
 }
 
-// NoticeFieldID marks the notice appended to the final dialog.
-//
-// A Discord dialog carries nothing but input fields, so a warning has to be a
-// field of its own. This one is never a template field: submission skips it, so
-// it reaches neither the issue body nor the count of collected values.
+// NoticeFieldID marks the notice appended to the final dialog. Submission
+// skips it, so it never reaches the issue body.
 const NoticeFieldID = "__public_issue_notice"
 
-// NoticeComponent returns the notice shown at the end of the final dialog,
-// where the reporter is about to submit.
+// NoticeComponent is the notice as a blank text input, for the legacy dialog
+// that can hold input fields only.
 func NoticeComponent() discordgo.ActionsRow {
 	return discordgo.ActionsRow{
 		Components: []discordgo.MessageComponent{
@@ -511,112 +576,17 @@ func NoticeComponent() discordgo.ActionsRow {
 				Label:       "This creates a public GitHub issue",
 				Style:       discordgo.TextInputShort,
 				Placeholder: "It shows your Discord username and user ID. Leave this blank.",
-				Required:    false,
+				Required:    boolPtr(false),
 			},
 		},
 	}
 }
 
-// GetModel returns the modal data for a specific command and channel
-func GetModel(command, channelID string) (*discordgo.InteractionResponseData, error) {
-	if loadedModals == nil {
-		return nil, fmt.Errorf("modals not loaded")
+// NoticeText is the notice as plain text in the dialog.
+func NoticeText() discordgo.TextDisplay {
+	return discordgo.TextDisplay{
+		Content: "**Submitting creates a public GitHub issue** that shows your Discord username and user ID.",
 	}
-
-	// Find the matching modal config
-	var modalConfig *ModalConfig
-	for _, modal := range loadedModals.Modals {
-		if modal.Command == command {
-			for _, cid := range modal.ChannelIDs {
-				if cid == channelID {
-					modalConfig = &modal
-					break
-				}
-			}
-			if modalConfig != nil {
-				break
-			}
-		}
-	}
-
-	if modalConfig == nil {
-		return nil, fmt.Errorf("%w: command '%s' in channel '%s'", ErrNotConfigured, command, channelID)
-	}
-
-	var fields []FieldConfig
-	var title string
-
-	// If template URL is configured, fetch and convert fields
-	if modalConfig.TemplateURL != nil {
-		template, err := FetchGitHubTemplate(modalConfig.TemplateURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch template: %w", err)
-		}
-
-		// Use template name as title
-		title = template.Name
-
-		templateFields := GetTemplateFields(template)
-		for _, field := range templateFields {
-			// Skip excluded fields
-			if isFieldExcluded(field.ID, modalConfig.ExcludeFields) {
-				continue
-			}
-			if converted := ConvertGitHubFieldToFieldConfig(field); converted != nil {
-				fields = append(fields, *converted)
-			}
-		}
-	} else {
-		// Use configured fields
-		fields = modalConfig.Fields
-		title = modalConfig.Title
-	}
-
-	// Discord modals can only have 5 components max
-	// If there are more, we'll need multi-part modals (handled by the caller)
-	maxFields := 5
-	moreToCome := len(fields) > maxFields
-	if moreToCome {
-		fields = fields[:maxFields]
-	}
-
-	// Build Discord modal components from the fields
-	components := make([]discordgo.MessageComponent, 0, len(fields))
-	for _, field := range fields {
-		style := discordgo.TextInputShort
-		if field.Style == "paragraph" {
-			style = discordgo.TextInputParagraph
-		}
-
-		textInput := discordgo.TextInput{
-			CustomID:    field.CustomID,
-			Label:       field.Label,
-			Style:       style,
-			Placeholder: field.Placeholder,
-			Required:    field.Required,
-		}
-
-		if field.MinLength > 0 {
-			textInput.MinLength = field.MinLength
-		}
-		if field.MaxLength > 0 {
-			textInput.MaxLength = field.MaxLength
-		}
-
-		components = append(components, discordgo.ActionsRow{
-			Components: []discordgo.MessageComponent{textInput},
-		})
-	}
-
-	// Warn on the dialog the reporter submits from. When more fields follow,
-	// this is not that dialog, and a full one has no room to spare.
-	if !moreToCome && len(components) < maxFields {
-		components = append(components, NoticeComponent())
-	}
-
-	return &discordgo.InteractionResponseData{
-		CustomID:   fmt.Sprintf("modal_%s_%s", command, channelID),
-		Title:      title,
-		Components: components,
-	}, nil
 }
+
+func boolPtr(b bool) *bool { return &b }
