@@ -274,7 +274,8 @@ func tapsignHelp() string {
 	b.WriteString("**How to get help or make a suggestion**\n\n")
 
 	b.WriteString("`/faq` — look up a frequently asked question.\n")
-	b.WriteString("Start typing a topic and pick one from the suggestions.\n\n")
+	b.WriteString("Type the topic, or just how you would describe it — near enough will find ")
+	b.WriteString("it, and the suggestions re-rank as you type.\n\n")
 
 	b.WriteString("`/changelog` — see what changed between two releases.\n")
 	b.WriteString("Takes a base and a head version, both with suggestions, ")
