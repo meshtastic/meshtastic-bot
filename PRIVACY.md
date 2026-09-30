@@ -35,12 +35,20 @@ Submitted via Discord by: <username> (<user ID>)
 
 ### `/faq`, `/changelog`, `/repo`, and `/tapsign`
 
-These commands read public information and reply to you. Nothing is retained.
+These commands read public information and reply in the channel. Nothing about
+you is retained.
+
+`/faq` additionally counts how often each FAQ topic is looked up, so the topics
+nobody uses can be dropped. The count is the topic's name and a number, plus a
+tally of searches that matched no topic. It records nothing about who searched,
+in which channel, or what they typed. The counts are held in memory, printed to
+the bot's own log hourly and at shutdown, and lost when the bot restarts.
 
 ## What the bot does not collect
 
-- No database, no file storage, and no analytics. The bot stores nothing between
-  restarts.
+- No database and no file storage. The bot stores nothing about you between
+  restarts; the only counts it keeps are the per-topic `/faq` tallies described
+  above, which name no one.
 - No channel messages, direct messages, or voice data. The only files it reads
   are those you attach to a `/bug` or `/feature` form, when it creates the issue.
 - No advertising, profiling, or sale of information to anyone.
@@ -52,6 +60,9 @@ Discord limits a dialog to five fields. While you are filling one in, your
 answers are held in the bot's memory so the next dialog can add to them. That
 copy is discarded when the issue is created, when 30 minutes pass without
 completing it, or when the bot restarts.
+
+The `/faq` topic counts described above are also held in memory only and go when
+the bot restarts.
 
 Nothing identifying is written to the machine the bot runs on.
 

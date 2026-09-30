@@ -6,13 +6,13 @@ A Discord bot for the Meshtastic community that streamlines bug reporting and fe
 
 - **Interactive Bug Reports**: Submit bug reports directly to GitHub through Discord modals
 - **Feature Requests**: Create feature requests with rich formatting
-- **FAQ System**: Searchable FAQ with autocomplete for quick answers
+- **FAQ System**: Fuzzy-matched FAQ with aliases and autocomplete; replies in the channel with a two-line answer above the doc link
 - **Health Check Endpoint**: Built-in HTTP server for monitoring and container health checks
 
 ## Commands
 
 - `/tapsign`: Display a short help message in the channel
-- `/faq <topic>`: Search and display frequently asked questions (with autocomplete)
+- `/faq <topic>`: Search the FAQ by topic name, alias or approximate wording (with autocomplete)
 - `/bug <title>`: Submit a bug report (opens an interactive modal)
 - `/feature <title>`: Request a new feature (opens an interactive modal)
 
@@ -213,21 +213,41 @@ config:
 
 ### faq.yaml
 
-Defines FAQ items and software modules:
+Defines FAQ items and software modules. `answer` is the reply shown above the
+link and should be at most two lines; `aliases` are the other words people use
+for the topic, matched the same way as the name but ranked a shade below it:
 
 ```yaml
 faq:
   - name: Getting Started
     url: https://meshtastic.org/docs/getting-started
-  - name: Supported Devices
-    url: https://meshtastic.org/docs/hardware
+    answer: |-
+      What to do with a new node, in order.
+      Flash it, pair it, then set the region.
+    aliases:
+      - new node
+      - first steps
 
 software_modules:
-  - name: Arduino
-    url: https://meshtastic.org/docs/software/arduino
-  - name: Python SDK
-    url: https://meshtastic.org/docs/software/python
+  - name: Rangetest
+    url: https://meshtastic.org/docs/configuration/module/range-test/
+    answer: |-
+      Sends numbered test messages to measure real-world range.
+      Noisy on a shared mesh, so turn it off afterwards.
+    aliases:
+      - range test
+      - how far
 ```
+
+`/faq` ranks topics by a fuzzy match over name and aliases, so spacing, word
+order, plurals, a wrapping question and small typos still find the topic. A word
+that appears only in an answer is a last resort, ranked below every name and
+alias match. When the best match is not near-exact the reply also names close
+runners-up as links.
+
+Each lookup is counted by topic name, in memory only, and the tallies are logged
+hourly and at shutdown. An untouched autocomplete lists the most looked-up topics
+first, so the counts order the browse list as well.
 
 ## Deployment
 
@@ -306,13 +326,14 @@ meshtastic-bot/
 │   ├── config/              # Configuration loading and validation
 │   │   ├── config.go        # Main config and URL parsing
 │   │   ├── env.go           # Environment variable handling
-│   │   ├── faq.go           # FAQ data structures
+│   │   ├── faq.go           # FAQ data, aliases and ranked search
 │   │   └── modal.go         # Modal configuration
 │   ├── discord/             # Discord bot implementation
 │   │   ├── bot.go           # Bot initialization
 │   │   ├── commands.go      # Slash command definitions
-│   │   ├── handlers.go      # Command handlers
 │   │   └── handlers/        # Individual handler implementations
+│   ├── fuzzy/               # Fuzzy string ranking used by FAQ search
+│   │   └── fuzzy.go
 │   ├── github/              # GitHub API client
 │   │   └── client.go
 │   └── routes/              # HTTP routes and health checks
