@@ -22,7 +22,7 @@ func getCommands() []*discordgo.ApplicationCommand {
 				{
 					Type:         discordgo.ApplicationCommandOptionString,
 					Name:         "topic",
-					Description:  "Select a FAQ topic",
+					Description:  "A topic, or how you would describe it",
 					Required:     true,
 					Autocomplete: true,
 				},

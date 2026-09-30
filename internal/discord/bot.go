@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/meshtastic/meshtastic-bot/internal/config"
 	"github.com/meshtastic/meshtastic-bot/internal/discord/handlers"
 
 	"github.com/bwmarrin/discordgo"
 )
+
+// faqUsageInterval is how often the FAQ counts are logged.
+const faqUsageInterval = time.Hour
 
 type DiscordBot struct {
 	session  *discordgo.Session
@@ -74,12 +78,35 @@ func (b *DiscordBot) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to register commands: %w", err)
 	}
 
+	go b.logFAQUsage(ctx)
+
 	b.logger.Println("DiscordBot is now running")
 	return nil
 }
 
+// logFAQUsage prints the in-memory FAQ counts periodically.
+func (b *DiscordBot) logFAQUsage(ctx context.Context) {
+	ticker := time.NewTicker(faqUsageInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if summary := handlers.FAQUsageSummary(); summary != "" {
+				b.logger.Println(summary)
+			}
+		}
+	}
+}
+
 func (b *DiscordBot) Stop(ctx context.Context) error {
 	b.logger.Println("Shutting down bot...")
+
+	if summary := handlers.FAQUsageSummary(); summary != "" {
+		b.logger.Println(summary)
+	}
 
 	if b.config.RemoveCommands {
 		b.logger.Println("Removing registered commands...")

@@ -1,61 +1,347 @@
+# Each topic takes aliases and a two-line answer shown above its link.
 faq:
   - name: "Tips"
-    url: "https://meshtastic.org/docs/configuration/tips"
+    url: "https://meshtastic.org/docs/configuration/tips/"
+    answer: |-
+      Collected advice on setting a node up sensibly: which defaults to keep, what to change, and what to leave alone.
+      Most misbehaving meshes are fixed by one of these rather than by more settings.
+    aliases:
+      - "best practices"
+      - "recommended settings"
+      - "settings advice"
+      - "setup tips"
   - name: "Mesh Algo"
     url: "https://meshtastic.org/docs/overview/mesh-algo/"
+    answer: |-
+      Managed flooding: a node relays a packet once, but stays quiet if it hears someone else relay it first.
+      The weakest-signal node waits least, so the furthest node relays and the message travels until the hop limit runs out.
+    aliases:
+      - "mesh algorithm"
+      - "how does the mesh work"
+      - "flooding"
+      - "routing"
+      - "rebroadcast"
+      - "relaying"
+      - "hops"
+      - "hop count"
+      - "max hops"
+      - "hop limit"
   - name: "ADC"
     url: "https://meshtastic.org/docs/configuration/radio/power/#adc-multiplier-override"
+    answer: |-
+      Battery voltage is read through a divider, so a board with a different divider reports the wrong percentage.
+      The ADC multiplier override corrects it; leave it alone unless your reading is wrong.
+    aliases:
+      - "adc multiplier"
+      - "adc multiplier override"
+      - "battery voltage wrong"
+      - "battery percentage wrong"
+      - "voltage divider"
   - name: "Antennas"
     url: "https://meshtastic.org/docs/hardware/antennas/"
+    answer: |-
+      Use an antenna made for your region's frequency, and never transmit without one attached.
+      Placement and height change range far more than any radio setting does.
+    aliases:
+      - "antenna"
+      - "aerial"
+      - "sma"
+      - "rp-sma"
+      - "antenna gain"
+      - "antenna length"
+      - "dbi"
+      - "swr"
   - name: "Hardware"
     url: "https://meshtastic.org/docs/hardware/devices/"
+    answer: |-
+      The supported devices list: which boards exist, what radio and extras each has, and which are current.
+      Check the board is sold for your region's frequency before buying.
+    aliases:
+      - "devices"
+      - "boards"
+      - "supported hardware"
+      - "which device should i buy"
+      - "t-beam"
+      - "heltec"
+      - "rak wisblock"
+      - "t-echo"
+      - "station g2"
   - name: "Default Pairing"
-    url: "https://meshtastic.org/docs/configuration/radio/bluetooth#default-pairing-mode"
+    url: "https://meshtastic.org/docs/configuration/radio/bluetooth/#default-pairing-mode"
+    answer: |-
+      Bluetooth pairing shows a random six-digit PIN on the device screen; with fixed-PIN mode, which screenless boards start in, it is 123456.
+      You can set a fixed PIN of your own in Bluetooth config.
+    aliases:
+      - "pairing pin"
+      - "bluetooth pin"
+      - "123456"
+      - "bluetooth pairing"
+      - "cannot pair"
+      - "pairing code"
   - name: "Contributing"
     url: "https://meshtastic.org/docs/contributing/"
+    answer: |-
+      How to help: firmware, apps, documentation and testing, with the repository and workflow for each.
+      Start from the contributing guide rather than messaging a maintainer.
+    aliases:
+      - "contribute"
+      - "help out"
+      - "get involved"
+      - "pull request"
+      - "developers"
   - name: "Translate Apple"
-    url: "https://meshtastic.org/docs/contributing/"
+    url: "https://meshtastic.org/docs/software/apple/user/translate/"
+    answer: |-
+      On iOS 26 and later the app's in-app docs translate on device and are shared back through the meshtastic/translations repository.
+      Corrections to a language go to that repository as a pull request.
+    aliases:
+      - "translate ios"
+      - "ios translation"
+      - "apple translation"
+      - "iphone translation"
+      - "apple localization"
   - name: "Translate Android"
-    url: "https://meshtastic.org/docs/contributing/"
-  - name: "Private Primary"
-    url: "https://meshtastic.org/docs/configuration/tips#creating-a-private-primary-with-default-secondary"
+    url: "https://meshtastic.org/docs/software/android/user/translate/"
+    answer: |-
+      Android strings and in-app docs are translated on Crowdin, not by pull request.
+      Pick your language there, or open a GitHub issue to have one added.
+    aliases:
+      - "android translation"
+      - "android localization"
+      - "crowdin"
+  - name: "Private Channel"
+    url: "https://meshtastic.org/docs/configuration/tips/#sharing-location-on-a-private-secondary-channel"
+    answer: |-
+      Keep the default public channel as your primary and put your group's traffic on a secondary channel, so the node still relays public traffic.
+      Everyone needs the identical secondary settings, and only the lowest-numbered one gets live position.
+    aliases:
+      - "private primary"
+      - "private mesh"
+      - "own channel"
+      - "primary channel"
+      - "secondary channel"
+      - "share location privately"
   - name: "Role"
-    url: "https://meshtastic.org/docs/configuration/radio/device#role"
+    url: "https://meshtastic.org/docs/configuration/radio/device/#role"
+    answer: |-
+      The role decides how a node takes part: CLIENT for most nodes, CLIENT_MUTE where it need not repeat, CLIENT_BASE for your own base station.
+      ROUTER and REPEATER cause real problems when used unnecessarily.
+    aliases:
+      - "device role"
+      - "router"
+      - "router role"
+      - "client mute"
+      - "client_base"
+      - "repeater"
+      - "roles"
   - name: "Cold Weather Charging"
     url: "https://yycmesh.com/blog/cold-weather-charging"
+    answer: |-
+      Charging lithium below freezing is the standard warning, and many chargers block it.
+      At the small currents a solar node actually charges with, two winters of field data found no damage.
+    aliases:
+      - "cold charging"
+      - "charging in the cold"
+      - "winter"
+      - "freezing"
+      - "battery cold"
+      - "solar in winter"
   - name: "Enter DFU Mode"
-    url: "https://meshtastic.org/docs/getting-started/flashing-firmware/nrf52/update-nrf52-bootloader/"
+    url: "https://meshtastic.org/docs/getting-started/flashing-firmware/nrf52/drag-n-drop/"
+    answer: |-
+      Most nRF52 boards enter the bootloader on a double-press of reset: a USB drive appears and you drop the UF2 file onto it.
+      This is the way back when an update fails or the device will not boot.
+    aliases:
+      - "dfu"
+      - "dfu mode"
+      - "bootloader"
+      - "double tap reset"
+      - "uf2"
+      - "recover device"
+      - "bricked"
   - name: "App Units & Locale"
-    url: "https://meshtastic.org/docs/software/android/user/units-and-locale"
+    url: "https://meshtastic.org/docs/software/android/user/units-and-locale/"
+    answer: |-
+      There is no unit switch inside the app: it follows your phone's language and region settings.
+      That changes what the app shows and nothing on the node itself.
+    aliases:
+      - "app units"
+      - "phone units"
+      - "app shows fahrenheit"
+      - "app shows celsius"
+      - "imperial in app"
+      - "metric in app"
+      - "app language"
+      - "locale"
   - name: "Device Display Units"
-    url: "https://meshtastic.org/docs/configuration/radio/display#preferred-display-units"
+    url: "https://meshtastic.org/docs/configuration/radio/display/#preferred-display-units"
+    answer: |-
+      The node's own screen has a units setting of its own, in display config, separate from the phone app.
+      Use it when the device screen shows the units you did not ask for.
+    aliases:
+      - "device units"
+      - "screen units"
+      - "display units"
+      - "fahrenheit on screen"
+      - "celsius on screen"
+      - "imperial on device"
+      - "metric on device"
 
 software_modules:
   - name: "Ambient Lighting"
     url: "https://meshtastic.org/docs/configuration/module/ambient-lighting/"
+    answer: |-
+      Drives an RGB LED on boards that have one, with a colour and brightness you set.
+      Off by default, and it costs power while it is on.
+    aliases:
+      - "rgb"
+      - "led"
+      - "neopixel"
+      - "lighting"
   - name: "External Notification"
     url: "https://meshtastic.org/docs/configuration/module/external-notification/"
+    answer: |-
+      Sounds a buzzer or drives an LED on a pin you choose when a message arrives.
+      Set the pin before enabling it, or it will do nothing visible.
+    aliases:
+      - "buzzer"
+      - "beep"
+      - "notification led"
+      - "ringtone"
+      - "message alert"
   - name: "Paxcounter"
     url: "https://meshtastic.org/docs/configuration/module/paxcounter/"
+    answer: |-
+      Counts nearby WiFi and Bluetooth devices and reports the tally as telemetry, without identifying anyone.
+      ESP32 only, and it requires WiFi and Bluetooth switched off, so the phone app cannot connect while it runs.
+    aliases:
+      - "pax"
+      - "pax counter"
+      - "people counter"
+      - "crowd counting"
+      - "wifi counter"
   - name: "Rangetest"
     url: "https://meshtastic.org/docs/configuration/module/range-test/"
+    answer: |-
+      A fixed sender posts numbered packets every 30 to 60 seconds and a mobile receiver logs them, optionally with GPS, to a CSV you can map.
+      Both ends need the module enabled; it eats airtime, and turns itself off after eight hours.
+    aliases:
+      - "range test"
+      - "range testing"
+      - "test range"
+      - "coverage test"
+      - "distance test"
+      - "how far"
   - name: "Remote Hardware"
     url: "https://meshtastic.org/docs/configuration/module/remote-hardware/"
+    answer: |-
+      Reads and sets GPIO pins on another node over the mesh.
+      Anyone on that channel can drive those pins, so enable it deliberately.
+    aliases:
+      - "gpio"
+      - "remote gpio"
+      - "gpio pins"
+      - "remote control"
   - name: "Serial"
     url: "https://meshtastic.org/docs/configuration/module/serial/"
+    answer: |-
+      Passes data between the mesh and whatever is wired to the node's serial pins.
+      Choose the pins and baud rate; they can clash with other uses of the same pins.
+    aliases:
+      - "uart"
+      - "serial port"
+      - "tx rx"
+      - "serial module"
+      - "rs232"
   - name: "Store & Forward"
-    url: "https://meshtastic.org/docs/configuration/module/store-forward/"
+    url: "https://meshtastic.org/docs/configuration/module/store-and-forward-module/"
+    answer: |-
+      A server node keeps recent text messages and resends them to clients that were out of range; since 2.4 the app fetches that history on connect.
+      Only an ESP32 board with PSRAM, such as a T-Beam or T3S3, can be the server.
+    aliases:
+      - "store and forward"
+      - "missed messages"
+      - "message history"
+      - "replay messages"
+      - "offline messages"
+      - "psram"
   - name: "Traceroute"
     url: "https://meshtastic.org/docs/configuration/module/traceroute/"
+    answer: |-
+      Shows the path a message took to another node, hop by hop, with the signal at each one.
+      The quickest way to see how a node is actually being reached.
+    aliases:
+      - "trace route"
+      - "path to node"
+      - "hops to node"
+      - "route to node"
   - name: "Canned Message"
     url: "https://meshtastic.org/docs/configuration/module/canned-message/"
+    answer: |-
+      Sends short preset messages from the device itself, driven by buttons or a rotary encoder.
+      Useful on a node carried without a phone.
+    aliases:
+      - "canned messages"
+      - "quick messages"
+      - "preset messages"
+      - "rotary encoder"
+      - "message without phone"
   - name: "Neighbor Info"
     url: "https://meshtastic.org/docs/configuration/module/neighbor-info/"
+    answer: |-
+      Broadcasts which nodes this one hears directly, with the signal for each, so the mesh's real shape can be mapped.
+      Off by default, and it only transmits over LoRa when your primary channel is not the default public one.
+    aliases:
+      - "neighbour info"
+      - "neighbors"
+      - "neighbours"
+      - "topology"
+      - "who do i hear"
   - name: "Audio"
     url: "https://meshtastic.org/docs/configuration/module/audio/"
+    answer: |-
+      Experimental codec2 voice, only on 2.4 GHz SX128x ESP32 boards with an I2S microphone and amplifier added.
+      It cannot work on an 868 or 915 MHz mesh: those bands are too narrow for continuous audio.
+    aliases:
+      - "voice"
+      - "codec2"
+      - "walkie talkie"
+      - "push to talk"
+      - "ptt"
   - name: "Detection Sensor"
     url: "https://meshtastic.org/docs/configuration/module/detection-sensor/"
+    answer: |-
+      Watches a GPIO pin and announces on the mesh when it changes, for a door, a switch or a motion sensor.
+      Give it a minimum interval, or a twitchy sensor will flood the channel.
+    aliases:
+      - "pir"
+      - "motion sensor"
+      - "door sensor"
+      - "door switch"
+      - "gpio sensor"
   - name: "MQTT"
     url: "https://meshtastic.org/docs/configuration/module/mqtt/"
+    answer: |-
+      Bridges your node's traffic to an MQTT broker, which is how a local mesh joins the wider internet-linked one.
+      Uplinked traffic leaves your mesh, so decide what you are willing to share first.
+    aliases:
+      - "mqtt module"
+      - "mqtt bridge"
+      - "mqtt server"
+      - "public mqtt"
+      - "broker"
+      - "uplink"
+      - "downlink"
+      - "meshmap"
   - name: "Telemetry"
     url: "https://meshtastic.org/docs/configuration/module/telemetry/"
+    answer: |-
+      Reports device metrics (battery, voltage, channel utilisation, airtime) plus environment, air quality and health readings on an interval.
+      The extra kinds are off by default, and temperature or humidity needs a supported I2C sensor wired up.
+    aliases:
+      - "sensors"
+      - "battery telemetry"
+      - "temperature sensor"
+      - "humidity"
+      - "bme280"
+      - "metrics"
