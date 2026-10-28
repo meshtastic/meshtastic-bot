@@ -150,7 +150,7 @@ faq:
     url: "https://meshtastic.org/docs/getting-started/flashing-firmware/nrf52/drag-n-drop/"
     answer: |-
       Most nRF52 boards enter the bootloader on a double-press of reset: a USB drive appears and you drop the UF2 file onto it.
-      Single-button boards (SenseCAP T1000-E, MeshTracker X1): hold the button while the device powers on and keep holding for 3 seconds (bootloader 2.5+). From the app or CLI, run `meshtastic --enter-dfu`.
+      Single-button boards (SenseCAP T1000-E, MeshTracker X1): with USB connected, hold the button while the device powers on and keep holding for 3 seconds (bootloader 2.5+). No button needed: `meshtastic --enter-dfu` from the CLI, or the app's firmware-update screen over USB.
     aliases:
       - "dfu"
       - "dfu mode"
@@ -164,7 +164,7 @@ faq:
   - name: "Update nRF52 Bootloader"
     url: "https://meshtastic.org/docs/getting-started/flashing-firmware/nrf52/update-nrf52-bootloader/"
     answer: |-
-      The Meshtastic nRF52 Bootloader (formerly OTAFIX) lets nRF52 boards update over the air and recover more reliably.
+      The Meshtastic nRF52 Bootloader (formerly OTAFIX) lets supported nRF52 boards update over the air and recover more reliably.
       The docs page walks through updating it, and the source is at https://github.com/meshtastic/nRF52_Bootloader.
     aliases:
       - "update bootloader"
