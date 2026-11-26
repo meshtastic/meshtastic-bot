@@ -199,6 +199,16 @@ faq:
       - "celsius on screen"
       - "imperial on device"
       - "metric on device"
+  - name: "Hop Basics"
+    url: "https://msh.to/hops-video"
+    answer: |-
+      Each relay uses up one hop, and the hop limit caps how many relays a message gets before nodes stop repeating it.
+      This video explains how hops work and how messages can still travel further than the 7-hop maximum.
+    aliases:
+      - "7 hops"
+      - "more than 7 hops"
+      - "hop explainer"
+      - "hops video"
 
 software_modules:
   - name: "Ambient Lighting"
